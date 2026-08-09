@@ -66,7 +66,9 @@ describe("autenticación", () => {
       const res = await handleMcpMessage(req("tools/list"), null, deps);
       expect(res?.error?.code).toBe(JSONRPC_ERROR.unauthorized);
       // Respuesta uniforme: no debe permitir enumerar tokens ni distinguir causas.
-      expect(res?.error?.message).toBe("No autorizado");
+      expect(res?.error?.message).toBe(
+        "No autorizado: se requiere un token de integración válido (Authorization: Bearer ...)",
+      );
       expect(JSON.stringify(res?.error)).not.toContain(reason);
     });
   }

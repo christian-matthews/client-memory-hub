@@ -261,7 +261,50 @@ export async function applyAiProposal(
   return { proposalId: proposal.id, status: "applied" as const, outcome };
 }
 
+export const editProposalInput = z.object({
+  proposalId: z.string().uuid(),
+  proposedChanges: z.record(z.unknown()),
+});
+
+/**
+ * Human correction of a pending proposal before approving it. The edit is
+ * recorded (who and when) and the original AI output stays in the run's
+ * `structured_output`, so "what the model said" and "what a human approved"
+ * never collapse into the same record.
+ */
+export async function editAiProposal(ctx: DomainContext, raw: unknown) {
+  assertWritable(ctx);
+  assertAdmin(ctx);
+  const input = editProposalInput.parse(raw);
+
+  const { data, error } = await ctx.db
+    .from("ai_proposals")
+    .update({
+      proposed_changes: input.proposedChanges as never,
+      edited_by: ctx.actor.userId ?? null,
+      edited_at: new Date().toISOString(),
+    })
+    .eq("workspace_id", ctx.workspaceId)
+    .eq("id", input.proposalId)
+    .eq("status", "pending")
+    .select("id, proposal_type, client_id, topic_id, proposed_changes")
+    .maybeSingle();
+  if (error) throw new DomainError("internal", error.message);
+  if (!data) throw notFound("Propuesta no encontrada o ya revisada");
+
+  await recordActivity(ctx, {
+    eventType: "ai_proposal.edited",
+    entityType: "ai_proposal",
+    entityId: data.id,
+    clientId: data.client_id,
+    topicId: data.topic_id,
+    description: `Propuesta de IA editada antes de aprobarse (${data.proposal_type})`,
+  });
+  return { proposal: data };
+}
+
 export function aiProviderStatus(): { configured: boolean; provider: string } {
+
   const provider = getAiProvider();
   return { configured: provider.isConfigured(), provider: provider.name };
 }

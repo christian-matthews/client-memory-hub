@@ -61,23 +61,12 @@ function SettingsPage() {
           </ul>
         </section>
 
-        <section className="panel p-4">
-          <h3 className="font-display text-sm font-semibold">Integraciones de agentes (MCP)</h3>
-          <p className="mt-1 text-xs text-muted-foreground">
-            Los agentes leen y escriben con las mismas reglas y auditoría que una persona.
-          </p>
-          <ul className="mt-3 grid gap-1.5 text-sm">
-            {data.integrations.length === 0 && (
-              <li className="text-muted-foreground">Sin integraciones registradas.</li>
-            )}
-            {data.integrations.map((i) => (
-              <li key={i.id} className="flex items-center justify-between gap-2">
-                <span>{i.name}</span>
-                <span className="label-caps">{i.write_enabled ? "lectura+escritura" : "lectura"}</span>
-              </li>
-            ))}
-          </ul>
-        </section>
+        <McpIntegrations
+          integrations={data.integrations}
+          workspaceId={workspaceId}
+          canManage={data.role === "owner" || data.role === "admin"}
+        />
+
       </div>
     </AppShell>
   );

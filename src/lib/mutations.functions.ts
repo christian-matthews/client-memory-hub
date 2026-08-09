@@ -24,6 +24,8 @@ import {
 import { createSource as createSourceAction, linkSourceToTopic } from "@/domain/sources/actions";
 import { reviewAiProposal } from "@/domain/ai/provider";
 
+type Json = string | number | boolean | null | Json[] | { [key: string]: Json };
+
 /**
  * Every mutation goes through the same shape: verified bearer token -> domain
  * context (workspace membership + role) -> pure domain action -> audit trail.
@@ -39,10 +41,11 @@ function mutation(action: (ctx: DomainContext, raw: unknown) => Promise<unknown>
     .handler(async ({ context, data }) =>
       run(async () => {
         const ctx = await domainCtx(context, data.workspaceId);
-        return action(ctx, data.payload);
+        return (await action(ctx, data.payload)) as Json;
       }),
     );
 }
+
 
 export const createClientFn = mutation(createClientAction);
 export const updateClientFn = mutation(updateClientAction);

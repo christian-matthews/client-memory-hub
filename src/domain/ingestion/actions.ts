@@ -365,7 +365,7 @@ export async function receiveTranscript(
   const { data, error } = await ctx.db.rpc("receive_macwhisper_transcript_v1", {
     p_connection_id: connection.id,
     p_secret_hash: connection.secretHash,
-    p_title: payload.title ?? null,
+    p_title: payload.title ?? "",
     p_transcript: payload.transcript,
     p_content_hash: contentHash,
     p_metadata: PLAIN_TEXT_CAPABILITIES as never,

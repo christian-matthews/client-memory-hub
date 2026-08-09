@@ -13,3 +13,5 @@ export * from "./commitments/actions";
 export * from "./sources/actions";
 export * from "./queries/read";
 export * from "./ai/provider";
+export * from "./ingestion/actions";
+export * from "./ai/meeting-processor";

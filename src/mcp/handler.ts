@@ -145,6 +145,7 @@ export async function handleMcpMessage(
   const ctx = createIntegrationContext({
     db: deps.db,
     workspaceId: integration.workspaceId,
+    integrationId: integration.id,
     integrationName: integration.name,
     writeEnabled: canWrite,
   });

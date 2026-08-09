@@ -97,6 +97,7 @@ export async function createDomainContext(params: {
 export function createIntegrationContext(params: {
   db: Db;
   workspaceId: string;
+  integrationId: string;
   integrationName: string;
   writeEnabled: boolean;
   correlationId?: string;
@@ -115,5 +116,6 @@ export function createIntegrationContext(params: {
     },
     correlationId: params.correlationId ?? crypto.randomUUID(),
     writeEnabled: params.writeEnabled,
+    integrationId: params.integrationId,
   };
 }

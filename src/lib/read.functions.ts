@@ -1,7 +1,9 @@
 import { createServerFn } from "@tanstack/react-start";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { z } from "zod";
+import { notFound } from "@/domain/shared/errors";
 import { domainCtx, run } from "./domain-context";
+
 import {
   getAttentionItems,
   getClientBrief,
@@ -167,7 +169,7 @@ export const fetchMeetings = createServerFn({ method: "POST" })
         ctx.db
           .from("ingestion_items")
           .select(
-            "id, connection_id, source_id, client_id, status, title, occurred_at, duration_seconds, participants, language, ai_run_id, proposal_count, error_message, processed_at, created_at",
+            "id, connection_id, source_id, client_id, status, title, occurred_at, duration_seconds, participants, language, ai_run_id, proposal_count, error_code, processing_started_at, metadata, processed_at, created_at",
           )
           .eq("workspace_id", ctx.workspaceId)
           .neq("status", "discarded")
@@ -189,7 +191,7 @@ export const fetchMeetings = createServerFn({ method: "POST" })
         ctx.db
           .from("ai_proposals")
           .select(
-            "id, ai_run_id, client_id, topic_id, proposal_type, proposed_changes, explanation, confidence, status, created_at",
+            "id, ai_run_id, client_id, topic_id, proposal_type, proposed_changes, explanation, confidence, status, evidence, edited_at, created_at",
           )
           .eq("workspace_id", ctx.workspaceId)
           .order("created_at", { ascending: false })
@@ -218,3 +220,53 @@ export const fetchMeetings = createServerFn({ method: "POST" })
       };
     }),
   );
+
+/**
+ * Full evidence for one meeting: the transcript verbatim plus the AI
+ * derivatives (latest first). Loaded on demand because a transcript can be
+ * hundreds of kilobytes and the inbox list must stay fast.
+ */
+export const fetchMeetingDetail = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((input: unknown) =>
+    withWorkspace.extend({ itemId: z.string().uuid() }).parse(input ?? {}),
+  )
+  .handler(async ({ context, data }) =>
+    run(async () => {
+      const ctx = await domainCtx(context, data.workspaceId);
+      const { data: item } = await ctx.db
+        .from("ingestion_items")
+        .select("id, source_id, title, status, metadata, error_code, participants, occurred_at")
+        .eq("workspace_id", ctx.workspaceId)
+        .eq("id", data.itemId)
+        .maybeSingle();
+      if (!item) throw notFound("Reunión no encontrada");
+
+      const [source, derivatives] = await Promise.all([
+        item.source_id
+          ? ctx.db
+              .from("sources")
+              .select("id, title, content_text, occurred_at, metadata, created_at")
+              .eq("workspace_id", ctx.workspaceId)
+              .eq("id", item.source_id)
+              .maybeSingle()
+          : Promise.resolve({ data: null }),
+        ctx.db
+          .from("source_derivatives")
+          .select(
+            "id, derivative_type, content_text, language, provider, model, prompt_version, metadata, created_at",
+          )
+          .eq("workspace_id", ctx.workspaceId)
+          .eq("source_id", item.source_id ?? "00000000-0000-0000-0000-000000000000")
+          .order("created_at", { ascending: false })
+          .limit(5),
+      ]);
+
+      return {
+        item,
+        source: source.data,
+        derivatives: derivatives.data ?? [],
+      };
+    }),
+  );
+

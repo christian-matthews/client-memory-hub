@@ -125,22 +125,20 @@ export const Route = createFileRoute("/api/public/ingest/macwhisper/$connectionI
 
         try {
           const result = await receiveTranscript(ctx, auth.connection, payload);
-          return json(
-            {
-              ok: true,
-              itemId: result.itemId,
-              sourceId: result.sourceId,
-              replayed: result.replayed,
-            },
-            result.replayed ? 200 : 201,
-          );
+          // 202 = evidence accepted, nothing analysed yet. 200 = known replay.
+          return json({ ok: true, replayed: result.replayed }, result.replayed ? 200 : 202);
         } catch (error) {
           const normalized = normalizeError(error);
           if (normalized.code === "internal") console.error(error);
-          const status =
-            normalized.code === "invalid_input" || normalized.code === "not_found" ? 400 : 500;
-          return json({ ok: false, error: normalized.code, message: normalized.message }, status);
+          if (normalized.code === "forbidden") return unauthorized();
+          // Public responses never leak database or provider messages.
+          const status = normalized.code === "invalid_input" ? 400 : 500;
+          return json(
+            { ok: false, error: status === 400 ? "invalid_payload" : "internal_error" },
+            status,
+          );
         }
+
       },
     },
   },

@@ -1,0 +1,147 @@
+import { createFileRoute } from "@tanstack/react-router";
+import {
+  authenticateIngestionConnection,
+  receiveTranscript,
+} from "@/domain/ingestion/actions";
+import { normalizeError } from "@/domain/shared/errors";
+import type { Db, DomainContext } from "@/domain/shared/context";
+
+/**
+ * Transcript ingestion endpoint for the macOS capture app (MacWhisper /
+ * Whisper Transcription).
+ *
+ * Lives under /api/public/* because the caller is an external app that cannot
+ * hold a user session. The credential is the (connectionId, secret) pair in the
+ * URL — the only shape those apps can send — and the workspace is derived from
+ * the stored connection, never from the request body.
+ *
+ * The endpoint ONLY stores evidence + an inbox item. It never mutates client
+ * memory and never triggers AI: a person decides that from the meeting inbox.
+ */
+
+const MAX_BODY_BYTES = 512 * 1024;
+const RATE_LIMIT = 30;
+const RATE_WINDOW_MS = 60_000;
+
+const SECURITY_HEADERS = {
+  "X-Content-Type-Options": "nosniff",
+  "Referrer-Policy": "no-referrer",
+  "Cache-Control": "no-store",
+  "X-Frame-Options": "DENY",
+};
+
+const buckets = new Map<string, { count: number; resetAt: number }>();
+
+function rateLimited(identity: string): boolean {
+  const now = Date.now();
+  const bucket = buckets.get(identity);
+  if (!bucket || bucket.resetAt <= now) {
+    buckets.set(identity, { count: 1, resetAt: now + RATE_WINDOW_MS });
+    if (buckets.size > 5000) {
+      for (const [k, v] of buckets) if (v.resetAt <= now) buckets.delete(k);
+    }
+    return false;
+  }
+  bucket.count += 1;
+  return bucket.count > RATE_LIMIT;
+}
+
+function json(body: unknown, status: number) {
+  return new Response(JSON.stringify(body), {
+    status,
+    headers: { "content-type": "application/json", ...SECURITY_HEADERS },
+  });
+}
+
+/** Uniform failure: never reveals whether the id or the secret was wrong. */
+function unauthorized() {
+  return json({ ok: false, error: "unauthorized" }, 401);
+}
+
+export const Route = createFileRoute("/api/public/ingest/macwhisper/$connectionId/$secret")({
+  server: {
+    handlers: {
+      POST: async ({ request, params }) => {
+        const ip =
+          request.headers.get("cf-connecting-ip") ??
+          request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ??
+          "unknown";
+        if (rateLimited(`ingest:${params.connectionId}|${ip}`)) {
+          return json({ ok: false, error: "rate_limited" }, 429);
+        }
+
+        const contentLength = Number(request.headers.get("content-length") ?? "0");
+        if (contentLength > MAX_BODY_BYTES) {
+          return json({ ok: false, error: "payload_too_large" }, 413);
+        }
+
+        const rawBody = await request.text();
+        if (new TextEncoder().encode(rawBody).byteLength > MAX_BODY_BYTES) {
+          return json({ ok: false, error: "payload_too_large" }, 413);
+        }
+
+        let payload: unknown;
+        const contentType = request.headers.get("content-type") ?? "";
+        if (contentType.includes("application/json")) {
+          try {
+            payload = JSON.parse(rawBody);
+          } catch {
+            return json({ ok: false, error: "invalid_json" }, 400);
+          }
+        } else if (rawBody.trim().startsWith("{")) {
+          try {
+            payload = JSON.parse(rawBody);
+          } catch {
+            return json({ ok: false, error: "invalid_json" }, 400);
+          }
+        } else {
+          // MacWhisper can POST the raw transcript as text/plain.
+          payload = { transcript: rawBody };
+        }
+
+        // Service role: the caller has no session. The lookup is by id + hash
+        // only, and everything after this point is scoped to that workspace.
+        const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+        const auth = await authenticateIngestionConnection(
+          supabaseAdmin as unknown as Db,
+          params.connectionId,
+          params.secret,
+        );
+        if (!auth.ok) return unauthorized();
+
+        const ctx: DomainContext = {
+          db: supabaseAdmin as unknown as Db,
+          workspaceId: auth.connection.workspaceId,
+          role: "member",
+          actor: {
+            type: "integration",
+            userId: null,
+            name: auth.connection.name,
+            channel: "macwhisper",
+          },
+          correlationId: crypto.randomUUID(),
+          writeEnabled: true,
+        };
+
+        try {
+          const result = await receiveTranscript(ctx, auth.connection, payload);
+          return json(
+            {
+              ok: true,
+              itemId: result.itemId,
+              sourceId: result.sourceId,
+              replayed: result.replayed,
+            },
+            result.replayed ? 200 : 201,
+          );
+        } catch (error) {
+          const normalized = normalizeError(error);
+          if (normalized.code === "internal") console.error(error);
+          const status =
+            normalized.code === "invalid_input" || normalized.code === "not_found" ? 400 : 500;
+          return json({ ok: false, error: normalized.code, message: normalized.message }, status);
+        }
+      },
+    },
+  },
+});

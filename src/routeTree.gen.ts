@@ -18,6 +18,7 @@ import { Route as AuthenticatedSettingsRouteImport } from './routes/_authenticat
 import { Route as AuthenticatedClientsClientIdRouteImport } from './routes/_authenticated/clients.$clientId'
 import { Route as AuthenticatedTopicsTopicIdRouteImport } from './routes/_authenticated/topics.$topicId'
 import { Route as ApiPublicMcpRouteImport } from './routes/api/public/mcp'
+import { Route as ApiPublicIngestMacwhisperConnectionIdSecretRouteImport } from './routes/api/public/ingest/macwhisper/$connectionId/$secret'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
@@ -66,6 +67,12 @@ const ApiPublicMcpRoute = ApiPublicMcpRouteImport.update({
   path: '/api/public/mcp',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiPublicIngestMacwhisperConnectionIdSecretRoute =
+  ApiPublicIngestMacwhisperConnectionIdSecretRouteImport.update({
+    id: '/api/public/ingest/macwhisper/$connectionId/$secret',
+    path: '/api/public/ingest/macwhisper/$connectionId/$secret',
+    getParentRoute: () => rootRouteImport,
+  } as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
@@ -76,6 +83,7 @@ export interface FileRoutesByFullPath {
   '/clients/$clientId': typeof AuthenticatedClientsClientIdRoute
   '/topics/$topicId': typeof AuthenticatedTopicsTopicIdRoute
   '/api/public/mcp': typeof ApiPublicMcpRoute
+  '/api/public/ingest/macwhisper/$connectionId/$secret': typeof ApiPublicIngestMacwhisperConnectionIdSecretRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
@@ -86,6 +94,7 @@ export interface FileRoutesByTo {
   '/clients/$clientId': typeof AuthenticatedClientsClientIdRoute
   '/topics/$topicId': typeof AuthenticatedTopicsTopicIdRoute
   '/api/public/mcp': typeof ApiPublicMcpRoute
+  '/api/public/ingest/macwhisper/$connectionId/$secret': typeof ApiPublicIngestMacwhisperConnectionIdSecretRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -98,6 +107,7 @@ export interface FileRoutesById {
   '/_authenticated/clients/$clientId': typeof AuthenticatedClientsClientIdRoute
   '/_authenticated/topics/$topicId': typeof AuthenticatedTopicsTopicIdRoute
   '/api/public/mcp': typeof ApiPublicMcpRoute
+  '/api/public/ingest/macwhisper/$connectionId/$secret': typeof ApiPublicIngestMacwhisperConnectionIdSecretRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -110,6 +120,7 @@ export interface FileRouteTypes {
     | '/clients/$clientId'
     | '/topics/$topicId'
     | '/api/public/mcp'
+    | '/api/public/ingest/macwhisper/$connectionId/$secret'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
@@ -120,6 +131,7 @@ export interface FileRouteTypes {
     | '/clients/$clientId'
     | '/topics/$topicId'
     | '/api/public/mcp'
+    | '/api/public/ingest/macwhisper/$connectionId/$secret'
   id:
     | '__root__'
     | '/'
@@ -131,6 +143,7 @@ export interface FileRouteTypes {
     | '/_authenticated/clients/$clientId'
     | '/_authenticated/topics/$topicId'
     | '/api/public/mcp'
+    | '/api/public/ingest/macwhisper/$connectionId/$secret'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -138,6 +151,7 @@ export interface RootRouteChildren {
   AuthenticatedRouteRoute: typeof AuthenticatedRouteRouteWithChildren
   AuthRoute: typeof AuthRoute
   ApiPublicMcpRoute: typeof ApiPublicMcpRoute
+  ApiPublicIngestMacwhisperConnectionIdSecretRoute: typeof ApiPublicIngestMacwhisperConnectionIdSecretRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -205,6 +219,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiPublicMcpRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/public/ingest/macwhisper/$connectionId/$secret': {
+      id: '/api/public/ingest/macwhisper/$connectionId/$secret'
+      path: '/api/public/ingest/macwhisper/$connectionId/$secret'
+      fullPath: '/api/public/ingest/macwhisper/$connectionId/$secret'
+      preLoaderRoute: typeof ApiPublicIngestMacwhisperConnectionIdSecretRouteImport
+      parentRoute: typeof rootRouteImport
+    }
   }
 }
 
@@ -232,6 +253,8 @@ const rootRouteChildren: RootRouteChildren = {
   AuthenticatedRouteRoute: AuthenticatedRouteRouteWithChildren,
   AuthRoute: AuthRoute,
   ApiPublicMcpRoute: ApiPublicMcpRoute,
+  ApiPublicIngestMacwhisperConnectionIdSecretRoute:
+    ApiPublicIngestMacwhisperConnectionIdSecretRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

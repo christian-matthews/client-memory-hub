@@ -238,6 +238,49 @@ export function renderMeetingSummary(
   ].join("\n\n");
 }
 
+export interface MeetingPromptInput {
+  client: { name: string; summary: string | null };
+  meeting: { title: string | null; occurredAt: string | null };
+  openTopics: {
+    topicId: string;
+    title: string;
+    status: string;
+    ballWith: string;
+    currentState: string;
+    nextStep: string | null;
+  }[];
+  transcript: string;
+}
+
+/**
+ * Builds the literal user turn sent to the model. The transcript travels as
+ * plain readable text (never as an escaped JSON blob), delimited so the model
+ * cannot confuse instructions with content, and is always the last block.
+ */
+export function buildUserContent(input: MeetingPromptInput): string {
+  const transcript = input.transcript.trim();
+  if (!transcript) {
+    throw new DomainError("invalid_input", "La transcripción está vacía");
+  }
+  const topics =
+    input.openTopics.length > 0
+      ? input.openTopics
+          .map(
+            (t) =>
+              `- topicId: ${t.topicId}\n  título: ${t.title}\n  estado: ${t.status}\n  pelota: ${t.ballWith}\n  situación: ${t.currentState}\n  siguiente paso: ${t.nextStep ?? "(sin definir)"}`,
+          )
+          .join("\n")
+      : "(el cliente no tiene temas abiertos)";
+
+  return [
+    `# Cliente\nNombre: ${input.client.name}\nResumen actual: ${input.client.summary ?? "(sin resumen)"}`,
+    `# Reunión\nTítulo: ${input.meeting.title ?? "(sin título)"}\nFecha: ${input.meeting.occurredAt ?? "(desconocida)"}\nCalidad de la fuente: texto plano, sin audio, sin marcas de tiempo, identidad de hablantes no verificada.`,
+    `# Temas abiertos del cliente (usa estos topicId exactos para actualizaciones)\n${topics}`,
+    `# Tarea\nDevuelve el resumen estructurado y solo los elementos accionables respaldados por una cita literal de la transcripción.`,
+    `# Transcripción (evidencia literal, delimitada)\n<<<TRANSCRIPCION\n${transcript}\nTRANSCRIPCION>>>`,
+  ].join("\n\n");
+}
+
 export const processIngestionItemInput = z.object({
   itemId: uuidSchema,
   clientId: uuidSchema.optional().nullable(),
@@ -253,18 +296,39 @@ const CLAIM_ERRORS: Record<string, [code: "conflict" | "not_found" | "invalid_in
   forbidden_workspace: ["invalid_input", "Sin acceso a este espacio de trabajo"],
 };
 
+export interface ProcessIngestionOptions {
+  /** Injected in tests; production resolves the Lovable AI Gateway provider. */
+  provider?: AiProvider;
+  /**
+   * Privileged (service_role) client. Required: the atomic claim, the derivative
+   * write and the transactional commit are server-only operations that a signed
+   * -in user must never be able to call directly. Authorization still happens
+   * above with the caller's own session (`assertAdmin` + workspace scoping).
+   */
+  privilegedDb?: DomainContext["db"];
+}
+
 export async function processIngestionItem(
   ctx: DomainContext,
   raw: unknown,
-  injectedProvider?: AiProvider,
+  options: ProcessIngestionOptions | AiProvider = {},
 ) {
   assertWritable(ctx);
   assertAdmin(ctx);
   const input = processIngestionItemInput.parse(raw);
+  const opts: ProcessIngestionOptions =
+    typeof (options as AiProvider).run === "function"
+      ? { provider: options as AiProvider }
+      : (options as ProcessIngestionOptions);
+  const privileged = opts.privilegedDb;
+  if (!privileged) {
+    throw new DomainError("internal", "El análisis de reuniones requiere el contexto del servidor");
+  }
 
   // Atomic transition to `processing`: two concurrent runs are impossible and a
-  // discarded item can never be processed.
-  const { data: claimData, error: claimError } = await ctx.db.rpc("claim_ingestion_item_v1", {
+  // discarded item can never be processed. Executed with the privileged client
+  // because the SQL function is service_role-only.
+  const { data: claimData, error: claimError } = await privileged.rpc("claim_ingestion_item_v1", {
     p_workspace_id: ctx.workspaceId,
     p_item_id: input.itemId,
     ...(input.clientId ? { p_client_id: input.clientId } : {}),
@@ -277,7 +341,8 @@ export async function processIngestionItem(
         throw new DomainError(code, message);
       }
     }
-    throw new DomainError("internal", rawMessage);
+    console.error("claim_ingestion_item_failed", rawMessage);
+    throw new DomainError("internal", "No se pudo iniciar el análisis de la reunión");
   }
   const claim = (claimData ?? {}) as {
     item_id: string;
@@ -290,69 +355,79 @@ export async function processIngestionItem(
   const itemId = claim.item_id;
   const clientId = claim.client_id;
   const model = resolveAiModel();
-
-  const [{ data: client }, { data: source }, { data: topics }] = await Promise.all([
-    ctx.db
-      .from("clients")
-      .select("id, name, current_summary")
-      .eq("workspace_id", ctx.workspaceId)
-      .eq("id", clientId)
-      .maybeSingle(),
-    ctx.db
-      .from("sources")
-      .select("id, content_text, occurred_at, title")
-      .eq("workspace_id", ctx.workspaceId)
-      .eq("id", claim.source_id)
-      .maybeSingle(),
-    ctx.db
-      .from("topics")
-      .select("id, title, status, priority, ball_with, current_state, next_step")
-      .eq("workspace_id", ctx.workspaceId)
-      .eq("client_id", clientId)
-      .in("status", ["active", "waiting_client", "pending_us", "blocked", "monitoring"])
-      .order("last_relevant_change_at", { ascending: false })
-      .limit(60),
-  ]);
-  if (!client) throw notFound("Cliente no encontrado en este espacio de trabajo");
-  if (!source?.content_text) throw notFound("Transcripción no encontrada");
-
-  const provider = injectedProvider ?? resolveAiProvider();
-  const openTopics = topics ?? [];
-  const transcript = source.content_text;
-
-  const runId = await startAiRun(ctx, {
-    purpose: "meeting_extraction",
-    provider: provider.name,
-    model,
-    promptVersion: PROMPT_VERSION,
-    sourceIds: [source.id],
-  });
+  let runId: string | null = null;
 
   try {
+    const [{ data: client }, { data: source }, { data: topics }] = await Promise.all([
+      ctx.db
+        .from("clients")
+        .select("id, name, current_summary")
+        .eq("workspace_id", ctx.workspaceId)
+        .eq("id", clientId)
+        .maybeSingle(),
+      ctx.db
+        .from("sources")
+        .select("id, content_text, occurred_at, title")
+        .eq("workspace_id", ctx.workspaceId)
+        .eq("id", claim.source_id)
+        .maybeSingle(),
+      ctx.db
+        .from("topics")
+        .select("id, title, status, priority, ball_with, current_state, next_step")
+        .eq("workspace_id", ctx.workspaceId)
+        .eq("client_id", clientId)
+        .in("status", ["active", "waiting_client", "pending_us", "blocked", "monitoring"])
+        .order("last_relevant_change_at", { ascending: false })
+        .limit(60),
+    ]);
+    if (!client) throw notFound("Cliente no encontrado en este espacio de trabajo");
+    if (!source?.content_text?.trim()) throw notFound("Transcripción no encontrada");
+
+    const provider = opts.provider ?? resolveAiProvider();
+    const openTopics = topics ?? [];
+    const transcript = source.content_text;
+
+    const promptInput: MeetingPromptInput = {
+      client: { name: client.name, summary: client.current_summary ?? null },
+      meeting: { title: claim.title, occurredAt: claim.occurred_at ?? source.occurred_at },
+      openTopics: openTopics.map((t) => ({
+        topicId: t.id,
+        title: t.title,
+        status: t.status,
+        ballWith: t.ball_with,
+        currentState: t.current_state,
+        nextStep: t.next_step,
+      })),
+      transcript: transcript.slice(0, 120000),
+    };
+    const userContent = buildUserContent(promptInput);
+
+    runId = await startAiRun(ctx, {
+      purpose: "meeting_extraction",
+      provider: provider.name,
+      model,
+      promptVersion: PROMPT_VERSION,
+      sourceIds: [source.id],
+    });
+
     const response = await provider.run<unknown>({
       purpose: "meeting_extraction",
       systemInstructions: SYSTEM_INSTRUCTIONS,
+      userContent,
       structuredInput: {
-        client: { name: client.name, summary: client.current_summary ?? null },
+        client: promptInput.client,
         meeting: {
-          title: claim.title,
-          occurredAt: claim.occurred_at ?? source.occurred_at,
+          title: promptInput.meeting.title,
+          occurredAt: promptInput.meeting.occurredAt,
           sourceQuality: {
             format: "plain_text",
             hasAudio: false,
             hasTimestamps: false,
             speakerIdentityReliable: false,
           },
-          transcript: transcript.slice(0, 120000),
+          transcriptChars: promptInput.transcript.length,
         },
-        openTopics: openTopics.map((t) => ({
-          topicId: t.id,
-          title: t.title,
-          status: t.status,
-          ballWith: t.ball_with,
-          currentState: t.current_state,
-          nextStep: t.next_step,
-        })),
+        openTopics: promptInput.openTopics,
       },
       sourceIds: [source.id],
       expectedSchema: EXTRACTION_SCHEMA as unknown as Record<string, unknown>,
@@ -391,87 +466,65 @@ export async function processIngestionItem(
       rows.push(row);
     }
 
-    const proposals = rows.map((p) => ({
-      workspace_id: ctx.workspaceId,
-      ai_run_id: runId,
-      client_id: clientId,
-      topic_id: p.topicId,
-      proposal_type: p.proposalType,
-      proposed_changes: p.proposedChanges as never,
-      explanation: p.explanation,
-      confidence: p.confidence,
-      evidence: p.evidence as never,
-      status: "pending" as const,
-    }));
-
-    if (proposals.length > 0) {
-      const { error: proposalError } = await ctx.db.from("ai_proposals").insert(proposals);
-      if (proposalError) throw new DomainError("internal", proposalError.message);
-    }
-
     const summaryText = renderMeetingSummary(extraction.summary, topicTitles);
+    const language = extraction.language.slice(0, 20);
+    const sourceQuality = {
+      format: "plain_text",
+      hasAudio: false,
+      hasTimestamps: false,
+      speakerIdentityReliable: false,
+    };
 
-    // Immutable derivative: a new run always creates a new version.
-    const { error: derivativeError } = await ctx.db.from("source_derivatives").insert({
-      workspace_id: ctx.workspaceId,
-      source_id: source.id,
-      ai_run_id: runId,
-      derivative_type: "meeting_summary",
-      content_text: summaryText,
-      language: extraction.language.slice(0, 20),
-      prompt_version: PROMPT_VERSION,
-      provider: provider.name,
-      model,
-      metadata: {
-        proposalCount: proposals.length,
-        discarded,
-        sourceQuality: {
-          format: "plain_text",
-          hasAudio: false,
-          hasTimestamps: false,
-          speakerIdentityReliable: false,
-        },
-      } as never,
-    });
-    if (derivativeError) throw new DomainError("internal", derivativeError.message);
-
-    await ctx.db
-      .from("ai_runs")
-      .update({
-        status: "completed",
-        structured_output: {
+    // ONE transaction: proposals + immutable derivative + run completion + item
+    // state. A failure at any point leaves nothing half-written.
+    const { data: finishData, error: finishError } = await privileged.rpc(
+      "finish_meeting_extraction_v1",
+      {
+        p_workspace_id: ctx.workspaceId,
+        p_item_id: itemId,
+        p_ai_run_id: runId,
+        p_source_id: source.id,
+        p_client_id: clientId,
+        p_language: language,
+        p_summary_text: summaryText,
+        p_provider: provider.name,
+        p_model: model,
+        p_prompt_version: PROMPT_VERSION,
+        p_derivative_metadata: {
+          proposalCount: rows.length,
+          discarded,
+          sourceQuality,
+        } as never,
+        p_structured_output: {
           summary: extraction.summary,
           language: extraction.language,
-          proposalCount: proposals.length,
+          proposalCount: rows.length,
           discarded,
           usage: response.usage ?? null,
         } as never,
-        completed_at: new Date().toISOString(),
-      })
-      .eq("workspace_id", ctx.workspaceId)
-      .eq("id", runId);
-
-    await ctx.db
-      .from("ingestion_items")
-      .update({
-        status: proposals.length > 0 ? "needs_review" : "processed",
-        client_id: clientId,
-        ai_run_id: runId,
-        language: extraction.language.slice(0, 20),
-        proposal_count: proposals.length,
-        processed_at: new Date().toISOString(),
-        error_message: null,
-        error_code: null,
-      })
-      .eq("workspace_id", ctx.workspaceId)
-      .eq("id", itemId);
+        p_proposals: rows.map((p) => ({
+          topic_id: p.topicId,
+          proposal_type: p.proposalType,
+          proposed_changes: p.proposedChanges,
+          explanation: p.explanation,
+          confidence: p.confidence,
+          evidence: p.evidence,
+        })) as never,
+      },
+    );
+    if (finishError) {
+      console.error("finish_meeting_extraction_failed", finishError.message);
+      throw new DomainError("internal", "No se pudo guardar el resultado del análisis");
+    }
+    const finish = (finishData ?? {}) as { proposal_count?: number };
+    const proposalCount = finish.proposal_count ?? rows.length;
 
     await recordActivity(ctx, {
       eventType: "ingestion_item.processed",
       entityType: "ingestion_item",
       entityId: itemId,
       clientId,
-      description: `Reunión analizada con IA: ${proposals.length} propuesta(s) para revisar`,
+      description: `Reunión analizada con IA: ${proposalCount} propuesta(s) para revisar`,
       inputSummary: clampText(extraction.summary.executive, 200),
       metadata: {
         aiRunId: runId,
@@ -484,7 +537,7 @@ export async function processIngestionItem(
     return {
       itemId,
       aiRunId: runId,
-      proposalCount: proposals.length,
+      proposalCount,
       discardedCount: discarded.length,
       summary: summaryText,
     };
@@ -493,19 +546,21 @@ export async function processIngestionItem(
     const code =
       error instanceof DomainError && error.code !== "internal" ? error.code : "ai_run_failed";
     console.error("meeting_extraction_failed", { itemId, runId, error });
-    await ctx.db
-      .from("ai_runs")
-      .update({ status: "failed", error_message: code, completed_at: new Date().toISOString() })
-      .eq("workspace_id", ctx.workspaceId)
-      .eq("id", runId);
-    await ctx.db
-      .from("ingestion_items")
-      .update({ status: "failed", ai_run_id: runId, error_message: null, error_code: code })
-      .eq("workspace_id", ctx.workspaceId)
-      .eq("id", itemId);
+    // Recovery is transactional too: the item never stays stuck in `processing`
+    // and no orphan pending proposals survive a failed run.
+    const { error: failError } = await privileged.rpc("fail_meeting_extraction_v1", {
+      p_workspace_id: ctx.workspaceId,
+      p_item_id: itemId,
+      // A failure before the run row exists still clears the item's `processing`.
+      p_ai_run_id: runId as unknown as string,
+
+      p_error_code: code,
+    });
+    if (failError) console.error("fail_meeting_extraction_failed", failError.message);
     throw error;
   }
 }
+
 
 export interface ProposalRow {
   proposalType: string;

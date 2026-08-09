@@ -187,8 +187,17 @@ export const processMeetingFn = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((input: unknown) => mutationInput.parse(input))
   .handler(async ({ context, data }) =>
-    runMutation((ctx, raw) => processIngestionItem(ctx, raw), context, data),
+    runMutation(async (ctx, raw) => {
+      // The caller is already authenticated and checked as workspace admin by the
+      // domain action. The privileged client is loaded here, inside the handler,
+      // and used ONLY for the server-only claim/commit SQL functions.
+      const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+      return processIngestionItem(ctx, raw, {
+        privilegedDb: supabaseAdmin as unknown as Parameters<typeof processIngestionItem>[0]["db"],
+      });
+    }, context, data),
   );
+
 
 export const rotateIngestionConnectionFn = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])

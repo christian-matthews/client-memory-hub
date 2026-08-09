@@ -114,6 +114,13 @@ export function createLovableGatewayProvider(apiKey: string, model = resolveAiMo
       const { promptVersion } = request.modelConfig;
       const effectiveModel = request.modelConfig.model || model;
 
+      // The user turn must carry real content. Nothing is substituted or
+      // invented here: an empty prompt fails before the provider is contacted.
+      const userContent = request.userContent.trim();
+      if (!userContent) {
+        throw new DomainError("invalid_input", "No hay contenido que enviar al modelo de IA");
+      }
+
       const controller = new AbortController();
       const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
       let response: Response;
@@ -134,11 +141,10 @@ export function createLovableGatewayProvider(apiKey: string, model = resolveAiMo
             input: [
               {
                 role: "user",
-                content: [
-                  { type: "input_text", text: JSON.stringify(request.structuredInput) },
-                ],
+                content: [{ type: "input_text", text: userContent }],
               },
             ],
+
             text: {
               format: {
                 type: "json_schema",

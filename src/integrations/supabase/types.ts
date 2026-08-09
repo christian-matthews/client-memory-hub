@@ -1403,6 +1403,33 @@ export type Database = {
         Returns: Json
       }
       ensure_default_workspace: { Args: never; Returns: string }
+      fail_meeting_extraction_v1: {
+        Args: {
+          p_ai_run_id: string
+          p_error_code: string
+          p_item_id: string
+          p_workspace_id: string
+        }
+        Returns: Json
+      }
+      finish_meeting_extraction_v1: {
+        Args: {
+          p_ai_run_id: string
+          p_client_id: string
+          p_derivative_metadata?: Json
+          p_item_id: string
+          p_language: string
+          p_model: string
+          p_prompt_version: string
+          p_proposals?: Json
+          p_provider: string
+          p_source_id: string
+          p_structured_output?: Json
+          p_summary_text: string
+          p_workspace_id: string
+        }
+        Returns: Json
+      }
       idempotency_finish: {
         Args: {
           p_error?: string

@@ -43,7 +43,7 @@ const mutationInput = z.object({
 function runMutation(
   action: (ctx: DomainContext, raw: unknown) => Promise<unknown>,
   context: { supabase: unknown; userId: string; claims?: Record<string, unknown> },
-  data: { workspaceId?: string | undefined; payload: unknown },
+  data: { workspaceId?: string | undefined; payload?: unknown },
 ) {
   return run(async () => {
     const ctx = await domainCtx(context, data.workspaceId);
@@ -129,7 +129,17 @@ export const reviewProposalFn = createServerFn({ method: "POST" })
 export const applyProposalFn = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((input: unknown) => mutationInput.parse(input))
-  .handler(async ({ context, data }) => runMutation(applyAiProposal, context, data));
+  .handler(async ({ context, data }) =>
+    runMutation(
+      (ctx, raw) =>
+        applyAiProposal(ctx, raw, {
+          addTopicUpdate: addTopicUpdateAction,
+          setTopicNextStep: setTopicNextStepAction,
+        }),
+      context,
+      data,
+    ),
+  );
 
 export const createIntegrationFn = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])

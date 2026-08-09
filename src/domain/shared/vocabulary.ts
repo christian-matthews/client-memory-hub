@@ -114,10 +114,17 @@ export const COMMITMENT_STATUS_LABEL: Record<CommitmentStatus, string> = {
   overdue: "Vencido",
 };
 
-/** Ingestion pipeline (transcripts arriving from external capture apps). */
+/**
+ * Ingestion pipeline (transcripts arriving from external capture apps).
+ * The flow is explicit: received → needs_client → ready → processing →
+ * needs_review → processed, with `failed` and `discarded` as terminal states.
+ */
 export const ingestionStatusSchema = z.enum([
   "received",
+  "needs_client",
+  "ready",
   "processing",
+  "needs_review",
   "processed",
   "failed",
   "discarded",
@@ -126,11 +133,24 @@ export type IngestionStatus = z.infer<typeof ingestionStatusSchema>;
 
 export const INGESTION_STATUS_LABEL: Record<IngestionStatus, string> = {
   received: "Recibida",
+  needs_client: "Falta cliente",
+  ready: "Lista para analizar",
   processing: "Procesando",
+  needs_review: "Propuestas por revisar",
   processed: "Procesada",
   failed: "Falló",
   discarded: "Descartada",
 };
+
+/** Safe, non-leaking explanations for the persisted failure codes. */
+export const INGESTION_ERROR_LABEL: Record<string, string> = {
+  ai_run_failed: "El análisis de IA no se completó. Puedes reintentarlo.",
+  conflict: "El proveedor de IA está saturado o alcanzó su límite. Reinténtalo en unos minutos.",
+  invalid_input: "La reunión no cumple los requisitos para analizarse.",
+  forbidden: "Sin créditos o permisos de IA disponibles.",
+  not_found: "Falta información asociada a la reunión.",
+};
+
 
 /** Proposal kinds the review flow knows how to apply through domain actions. */
 export const proposalTypeSchema = z.enum([

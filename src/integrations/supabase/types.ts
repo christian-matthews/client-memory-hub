@@ -114,6 +114,10 @@ export type Database = {
           client_id: string | null
           confidence: number | null
           created_at: string
+          edit_count: number
+          edited_at: string | null
+          edited_by: string | null
+          evidence: Json
           explanation: string
           id: string
           proposal_type: string
@@ -130,6 +134,10 @@ export type Database = {
           client_id?: string | null
           confidence?: number | null
           created_at?: string
+          edit_count?: number
+          edited_at?: string | null
+          edited_by?: string | null
+          evidence?: Json
           explanation: string
           id?: string
           proposal_type: string
@@ -146,6 +154,10 @@ export type Database = {
           client_id?: string | null
           confidence?: number | null
           created_at?: string
+          edit_count?: number
+          edited_at?: string | null
+          edited_by?: string | null
+          evidence?: Json
           explanation?: string
           id?: string
           proposal_type?: string
@@ -717,6 +729,7 @@ export type Database = {
           content_hash: string
           created_at: string
           duration_seconds: number | null
+          error_code: string | null
           error_message: string | null
           external_id: string | null
           id: string
@@ -725,6 +738,7 @@ export type Database = {
           occurred_at: string | null
           participants: string[]
           processed_at: string | null
+          processing_started_at: string | null
           proposal_count: number
           source_id: string | null
           status: Database["public"]["Enums"]["ingestion_status"]
@@ -739,6 +753,7 @@ export type Database = {
           content_hash: string
           created_at?: string
           duration_seconds?: number | null
+          error_code?: string | null
           error_message?: string | null
           external_id?: string | null
           id?: string
@@ -747,6 +762,7 @@ export type Database = {
           occurred_at?: string | null
           participants?: string[]
           processed_at?: string | null
+          processing_started_at?: string | null
           proposal_count?: number
           source_id?: string | null
           status?: Database["public"]["Enums"]["ingestion_status"]
@@ -761,6 +777,7 @@ export type Database = {
           content_hash?: string
           created_at?: string
           duration_seconds?: number | null
+          error_code?: string | null
           error_message?: string | null
           external_id?: string | null
           id?: string
@@ -769,6 +786,7 @@ export type Database = {
           occurred_at?: string | null
           participants?: string[]
           processed_at?: string | null
+          processing_started_at?: string | null
           proposal_count?: number
           source_id?: string | null
           status?: Database["public"]["Enums"]["ingestion_status"]
@@ -863,6 +881,73 @@ export type Database = {
         Relationships: [
           {
             foreignKeyName: "mcp_integrations_workspace_id_fkey"
+            columns: ["workspace_id"]
+            isOneToOne: false
+            referencedRelation: "workspaces"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      source_derivatives: {
+        Row: {
+          ai_run_id: string | null
+          content_text: string
+          created_at: string
+          derivative_type: string
+          id: string
+          language: string | null
+          metadata: Json
+          model: string
+          prompt_version: string
+          provider: string
+          source_id: string
+          workspace_id: string
+        }
+        Insert: {
+          ai_run_id?: string | null
+          content_text: string
+          created_at?: string
+          derivative_type?: string
+          id?: string
+          language?: string | null
+          metadata?: Json
+          model: string
+          prompt_version: string
+          provider: string
+          source_id: string
+          workspace_id: string
+        }
+        Update: {
+          ai_run_id?: string | null
+          content_text?: string
+          created_at?: string
+          derivative_type?: string
+          id?: string
+          language?: string | null
+          metadata?: Json
+          model?: string
+          prompt_version?: string
+          provider?: string
+          source_id?: string
+          workspace_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "source_derivatives_ai_run_fk"
+            columns: ["workspace_id", "ai_run_id"]
+            isOneToOne: false
+            referencedRelation: "ai_runs"
+            referencedColumns: ["workspace_id", "id"]
+          },
+          {
+            foreignKeyName: "source_derivatives_source_fk"
+            columns: ["workspace_id", "source_id"]
+            isOneToOne: false
+            referencedRelation: "sources"
+            referencedColumns: ["workspace_id", "id"]
+          },
+          {
+            foreignKeyName: "source_derivatives_workspace_id_fkey"
             columns: ["workspace_id"]
             isOneToOne: false
             referencedRelation: "workspaces"
@@ -1367,7 +1452,10 @@ export type Database = {
       idempotency_status: "in_progress" | "completed" | "failed"
       ingestion_status:
         | "received"
+        | "needs_client"
+        | "ready"
         | "processing"
+        | "needs_review"
         | "processed"
         | "failed"
         | "discarded"
@@ -1534,7 +1622,10 @@ export const Constants = {
       idempotency_status: ["in_progress", "completed", "failed"],
       ingestion_status: [
         "received",
+        "needs_client",
+        "ready",
         "processing",
+        "needs_review",
         "processed",
         "failed",
         "discarded",

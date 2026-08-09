@@ -593,10 +593,12 @@ export type Database = {
       idempotency_keys: {
         Row: {
           actor_type: Database["public"]["Enums"]["actor_type"]
+          actor_user_id: string | null
           completed_at: string | null
           created_at: string
           error_message: string | null
           expires_at: string
+          integration_id: string | null
           key: string
           operation: string
           request_hash: string
@@ -606,10 +608,12 @@ export type Database = {
         }
         Insert: {
           actor_type?: Database["public"]["Enums"]["actor_type"]
+          actor_user_id?: string | null
           completed_at?: string | null
           created_at?: string
           error_message?: string | null
           expires_at?: string
+          integration_id?: string | null
           key: string
           operation: string
           request_hash: string
@@ -619,10 +623,12 @@ export type Database = {
         }
         Update: {
           actor_type?: Database["public"]["Enums"]["actor_type"]
+          actor_user_id?: string | null
           completed_at?: string | null
           created_at?: string
           error_message?: string | null
           expires_at?: string
+          integration_id?: string | null
           key?: string
           operation?: string
           request_hash?: string
@@ -743,13 +749,6 @@ export type Database = {
           workspace_id?: string
         }
         Relationships: [
-          {
-            foreignKeyName: "sources_client_id_fkey"
-            columns: ["client_id"]
-            isOneToOne: false
-            referencedRelation: "clients"
-            referencedColumns: ["id"]
-          },
           {
             foreignKeyName: "sources_workspace_id_fkey"
             columns: ["workspace_id"]
@@ -1078,9 +1077,69 @@ export type Database = {
         Args: { _workspace_id: string }
         Returns: undefined
       }
+      audit_write_internal: {
+        Args: {
+          p_actor_name: string
+          p_actor_type: Database["public"]["Enums"]["actor_type"]
+          p_actor_user_id: string
+          p_correlation_id: string
+          p_event: Json
+          p_workspace_id: string
+        }
+        Returns: string
+      }
       create_workspace_with_owner: {
         Args: { p_name: string; p_slug?: string }
         Returns: string
+      }
+      domain_write: {
+        Args: {
+          p_correlation_id?: string
+          p_idempotency_key?: string
+          p_operation: string
+          p_payload: Json
+          p_request_hash?: string
+          p_workspace_id: string
+        }
+        Returns: Json
+      }
+      domain_write_as_integration: {
+        Args: {
+          p_correlation_id?: string
+          p_idempotency_key?: string
+          p_integration_id: string
+          p_operation: string
+          p_payload: Json
+          p_request_hash?: string
+        }
+        Returns: Json
+      }
+      domain_write_core: {
+        Args: {
+          p_actor_name: string
+          p_actor_type: Database["public"]["Enums"]["actor_type"]
+          p_actor_user_id: string
+          p_correlation_id: string
+          p_operation: string
+          p_payload: Json
+          p_workspace_id: string
+        }
+        Returns: Json
+      }
+      domain_write_guarded: {
+        Args: {
+          p_actor_name: string
+          p_actor_type: Database["public"]["Enums"]["actor_type"]
+          p_actor_user_id: string
+          p_correlation_id: string
+          p_idempotency_key: string
+          p_integration_id: string
+          p_operation: string
+          p_payload: Json
+          p_request_hash: string
+          p_workspace_id: string
+        }
+        Returns: Json
       }
       ensure_default_workspace: { Args: never; Returns: string }
       idempotency_finish: {
@@ -1105,6 +1164,16 @@ export type Database = {
       }
       is_workspace_admin: { Args: { _workspace_id: string }; Returns: boolean }
       is_workspace_member: { Args: { _workspace_id: string }; Returns: boolean }
+      record_activity_v1: {
+        Args: {
+          p_actor_name?: string
+          p_actor_type?: Database["public"]["Enums"]["actor_type"]
+          p_correlation_id?: string
+          p_event: Json
+          p_workspace_id: string
+        }
+        Returns: string
+      }
       workspace_role_of: {
         Args: { _workspace_id: string }
         Returns: Database["public"]["Enums"]["workspace_role"]

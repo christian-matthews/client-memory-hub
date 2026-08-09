@@ -1,7 +1,8 @@
 import { z } from "zod";
 import { assertWritable, type DomainContext } from "../shared/context";
 import { DomainError, notFound } from "../shared/errors";
-import { findReplay, recordActivity } from "../shared/audit";
+import { recordActivity } from "../shared/audit";
+import { idempotent } from "../shared/idempotency";
 import { idempotencyKeySchema, sourceTypeSchema, uuidSchema } from "../shared/vocabulary";
 
 export const sourceRowFields =
@@ -23,12 +24,9 @@ export const createSourceInput = z.object({
   idempotencyKey: idempotencyKeySchema,
 });
 
-export async function createSource(ctx: DomainContext, raw: unknown) {
+async function createSourceImpl(ctx: DomainContext, raw: unknown) {
   assertWritable(ctx);
   const input = createSourceInput.parse(raw);
-
-  const replay = await findReplay(ctx, input.idempotencyKey);
-  if (replay?.entityId) return { sourceId: replay.entityId, replayed: true };
 
   // Deduplicate external evidence by (workspace, provider, external id).
   if (input.externalProvider && input.externalId) {
@@ -130,3 +128,5 @@ async function hashContent(text: string): Promise<string> {
     .map((b) => b.toString(16).padStart(2, "0"))
     .join("");
 }
+
+export const createSource = idempotent("create_source", createSourceImpl);

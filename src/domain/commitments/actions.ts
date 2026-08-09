@@ -1,7 +1,8 @@
 import { z } from "zod";
 import { assertWritable, type DomainContext } from "../shared/context";
 import { DomainError, notFound } from "../shared/errors";
-import { findReplay, recordActivity } from "../shared/audit";
+import { recordActivity } from "../shared/audit";
+import { idempotent } from "../shared/idempotency";
 import { idempotencyKeySchema, responsiblePartySchema, uuidSchema } from "../shared/vocabulary";
 import { fetchTopic, touchClientActivity } from "../topics/actions";
 
@@ -29,15 +30,10 @@ export const createCommitmentInput = z.object({
   idempotencyKey: idempotencyKeySchema,
 });
 
-export async function createCommitment(ctx: DomainContext, raw: unknown) {
+async function createCommitmentImpl(ctx: DomainContext, raw: unknown) {
   assertWritable(ctx);
   const input = createCommitmentInput.parse(raw);
   const topic = await fetchTopic(ctx, input.topicId);
-
-  const replay = await findReplay(ctx, input.idempotencyKey);
-  if (replay?.entityId) {
-    return { commitment: await fetchCommitment(ctx, replay.entityId), replayed: true };
-  }
 
   const { data, error } = await ctx.db
     .from("commitments")
@@ -73,7 +69,7 @@ export const completeCommitmentInput = z.object({
   idempotencyKey: idempotencyKeySchema,
 });
 
-export async function completeCommitment(ctx: DomainContext, raw: unknown) {
+async function completeCommitmentImpl(ctx: DomainContext, raw: unknown) {
   assertWritable(ctx);
   const input = completeCommitmentInput.parse(raw);
   const existing = await fetchCommitment(ctx, input.commitmentId);
@@ -81,9 +77,6 @@ export async function completeCommitment(ctx: DomainContext, raw: unknown) {
   if (existing.status === "completed") {
     return { commitment: existing, replayed: true };
   }
-  const replay = await findReplay(ctx, input.idempotencyKey);
-  if (replay) return { commitment: existing, replayed: true };
-
   const now = new Date().toISOString();
   const { data, error } = await ctx.db
     .from("commitments")
@@ -131,3 +124,6 @@ export async function cancelCommitment(ctx: DomainContext, raw: unknown) {
   });
   return { commitment: data };
 }
+
+export const createCommitment = idempotent("create_commitment", createCommitmentImpl);
+export const completeCommitment = idempotent("complete_commitment", completeCommitmentImpl);

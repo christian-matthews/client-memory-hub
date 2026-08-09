@@ -175,6 +175,9 @@ Propiedades del servidor:
   completo.
 - Las tools de escritura aceptan `idempotencyKey`, así un agente que reintenta
   no duplica compromisos ni actualizaciones.
+- El endpoint está endurecido: límite de cuerpo (128 KB), validación de
+  `content-type`/`accept`, límite de tamaño de respuesta (256 KB), timeout por
+  tool (15 s), rate-limiting por token e IP y `correlation_id` por solicitud.
 
 Nota técnica: el transporte se implementa a mano en `src/mcp/handler.ts` en
 lugar de usar `@lovable.dev/mcp-js` porque ese paquete solo admite OAuth 2.1
@@ -184,8 +187,13 @@ de larga duración con scope por workspace.
 ## Pruebas
 
 ```bash
-bun run test           # suite completa
+bun run test           # unitarias (dominio + transporte MCP)
 bun run test:coverage  # cobertura de src/domain y src/mcp
+
+# Integración real contra PostgreSQL: base limpia, todas las migraciones
+# aplicadas en orden y RLS efectiva (el rol de prueba es miembro llano de
+# `authenticated`, sin bypassrls). Todo corre en una transacción con ROLLBACK.
+bash scripts/local-db-test.sh
 ```
 
 Cubierto hoy:
@@ -195,6 +203,13 @@ Cubierto hoy:
   severidad.
 - `src/domain/shared/idempotency.test.ts` — hash estable independiente del
   orden de claves.
+- `scripts/db-integration.sql` (vía `scripts/local-db-test.sh`) — pruebas
+  reales sin mocks: RLS entre workspaces, imposibilidad de insertar o alterar
+  auditoría directamente, coerción del `actor_type` y del `actor_user_id`,
+  idempotencia atómica (repetición, conflicto de payload, aislamiento por
+  actor), rollback total de una operación compuesta inválida, triggers de
+  membresía, `ON DELETE SET NULL` compuesto, y credenciales MCP
+  (solo-lectura, revocada, expirada, workspace derivado del token).
 - `src/mcp/handler.test.ts` — handshake, los cuatro modos de fallo de
   autenticación, enforcement de scopes, workspace derivado del token (no del
   argumento del agente), validación de argumentos y no filtración de errores
@@ -202,8 +217,9 @@ Cubierto hoy:
 
 ## Limitaciones conocidas
 
-- No hay pruebas de integración que ejecuten RLS real contra la base; la
-  cobertura actual es de dominio y transporte.
+- Las pruebas de integración corren contra un PostgreSQL local con la superficie
+  de `auth` de Supabase emulada (`auth.uid()`, `auth.jwt()`, roles), no contra el
+  proyecto administrado.
 - `search_client_memory` usa búsqueda por texto simple (`ILIKE`), sin ranking
   ni embeddings.
 - La aplicación de propuestas de IA cubre los tipos de cambio ya modelados; no

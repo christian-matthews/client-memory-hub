@@ -35,11 +35,11 @@ interface ReserveResult {
  * Reserve -> run -> store. A failure marks the key `failed`, which allows a
  * controlled retry with the same key instead of locking it forever.
  */
-export async function withIdempotency<T>(
+export async function withIdempotency<T extends object>(
   ctx: DomainContext,
   params: { operation: string; key: string | null | undefined; payload: unknown },
   fn: () => Promise<T>,
-): Promise<T & { replayed?: boolean }> {
+): Promise<T> {
   const key = params.key ?? null;
   if (!key) return fn();
 
@@ -53,7 +53,7 @@ export async function withIdempotency<T>(
   });
   if (error) throw new DomainError("internal", error.message);
 
-  const reserved = (data ?? { state: "reserved" }) as ReserveResult;
+  const reserved = (data ?? { state: "reserved" }) as unknown as ReserveResult;
   if (reserved.state === "conflict") {
     throw new DomainError(
       "conflict",
@@ -64,7 +64,7 @@ export async function withIdempotency<T>(
     throw new DomainError("conflict", "Otra solicitud con esta clave está en curso");
   }
   if (reserved.state === "completed") {
-    return { ...(reserved.result as T), replayed: true };
+    return { ...(reserved.result as T), replayed: true } as T;
   }
 
   try {
@@ -74,9 +74,9 @@ export async function withIdempotency<T>(
       p_key: key,
       p_ok: true,
       p_result: JSON.parse(JSON.stringify({ ...result, replayed: true })),
-      p_error: null,
+      p_error: undefined,
     });
-    return result;
+    return result as T;
   } catch (err) {
     await ctx.db.rpc("idempotency_finish", {
       p_workspace_id: ctx.workspaceId,

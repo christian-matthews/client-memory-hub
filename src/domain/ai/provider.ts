@@ -14,6 +14,13 @@ import { recordActivity } from "../shared/audit";
 export const aiRequestSchema = z.object({
   purpose: z.string().min(1),
   systemInstructions: z.string().min(1),
+  /**
+   * The literal user turn sent to the model. It is built by the caller and must
+   * already contain everything the model may read (transcript, allowed client
+   * context, existing topics, extraction instructions, prompt version). An
+   * empty value is a caller bug, never something a provider may paper over.
+   */
+  userContent: z.string().trim().min(1),
   structuredInput: z.record(z.unknown()),
   sourceIds: z.array(z.string().uuid()).default([]),
   /** JSON Schema (or Zod-derived) description of the expected output. */

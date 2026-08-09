@@ -85,3 +85,33 @@ export async function createDomainContext(params: {
     writeEnabled: params.writeEnabled ?? true,
   };
 }
+
+/**
+ * Context for an authenticated MCP integration. The workspace is resolved from
+ * the integration credential (never from an agent-supplied argument) and every
+ * domain query filters on `ctx.workspaceId`, so a tool can only ever see the
+ * workspace its token belongs to.
+ */
+export function createIntegrationContext(params: {
+  db: Db;
+  workspaceId: string;
+  integrationName: string;
+  writeEnabled: boolean;
+  correlationId?: string;
+}): DomainContext {
+  return {
+    db: params.db,
+    workspaceId: params.workspaceId,
+    // Integrations act with member-level authority: no membership or billing
+    // administration, no AI proposal review.
+    role: "member",
+    actor: {
+      type: "integration",
+      userId: null,
+      name: params.integrationName,
+      channel: "mcp",
+    },
+    correlationId: params.correlationId ?? crypto.randomUUID(),
+    writeEnabled: params.writeEnabled,
+  };
+}

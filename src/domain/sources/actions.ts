@@ -15,7 +15,7 @@ export const createSourceInput = z.object({
   clientId: uuidSchema.optional().nullable(),
   sourceType: sourceTypeSchema.default("manual_note"),
   title: z.string().trim().max(300).optional().nullable(),
-  contentText: z.string().trim().min(1).max(20000),
+  contentText: z.string().trim().min(1).max(200000),
   occurredAt: z.string().datetime({ offset: true }).optional().nullable(),
   externalProvider: z.string().trim().max(60).optional().nullable(),
   externalId: z.string().trim().max(200).optional().nullable(),

@@ -1,7 +1,7 @@
 import type { ReactNode } from "react";
 import { Link, useNavigate } from "@tanstack/react-router";
 import { useQueryClient } from "@tanstack/react-query";
-import { Brain, LayoutDashboard, ListChecks, Settings, LogOut } from "lucide-react";
+import { Brain, LayoutDashboard, ListChecks, Mic, Settings, LogOut } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
@@ -10,6 +10,7 @@ import { useActiveWorkspace } from "@/lib/use-workspace";
 const NAV = [
   { to: "/dashboard", label: "Atención", icon: LayoutDashboard },
   { to: "/commitments", label: "Compromisos", icon: ListChecks },
+  { to: "/meetings", label: "Reuniones", icon: Mic },
   { to: "/settings", label: "Espacio", icon: Settings },
 ] as const;
 

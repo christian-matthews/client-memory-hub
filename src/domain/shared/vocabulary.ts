@@ -113,3 +113,47 @@ export const COMMITMENT_STATUS_LABEL: Record<CommitmentStatus, string> = {
   cancelled: "Cancelado",
   overdue: "Vencido",
 };
+
+/** Ingestion pipeline (transcripts arriving from external capture apps). */
+export const ingestionStatusSchema = z.enum([
+  "received",
+  "processing",
+  "processed",
+  "failed",
+  "discarded",
+]);
+export type IngestionStatus = z.infer<typeof ingestionStatusSchema>;
+
+export const INGESTION_STATUS_LABEL: Record<IngestionStatus, string> = {
+  received: "Recibida",
+  processing: "Procesando",
+  processed: "Procesada",
+  failed: "Falló",
+  discarded: "Descartada",
+};
+
+/** Proposal kinds the review flow knows how to apply through domain actions. */
+export const proposalTypeSchema = z.enum([
+  "topic_update",
+  "topic_next_step",
+  "new_topic",
+  "commitment",
+  "decision",
+]);
+export type ProposalType = z.infer<typeof proposalTypeSchema>;
+
+export const PROPOSAL_TYPE_LABEL: Record<ProposalType, string> = {
+  topic_update: "Actualización de tema",
+  topic_next_step: "Próximo paso",
+  new_topic: "Tema nuevo",
+  commitment: "Compromiso",
+  decision: "Decisión",
+};
+
+export const AI_PROPOSAL_STATUS_LABEL: Record<string, string> = {
+  pending: "Pendiente",
+  approved: "Aprobada",
+  rejected: "Rechazada",
+  applied: "Aplicada",
+  expired: "Expirada",
+};

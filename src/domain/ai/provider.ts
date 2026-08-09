@@ -177,13 +177,18 @@ export const applyProposalInput = z.object({ proposalId: z.string().uuid() });
  * implicitly by approval. `proposal_type` decides which domain action runs;
  * unknown types are rejected instead of being guessed.
  */
+export type ProposalActions = {
+  addTopicUpdate: (ctx: DomainContext, payload: unknown) => Promise<unknown>;
+  setTopicNextStep: (ctx: DomainContext, payload: unknown) => Promise<unknown>;
+  createTopic?: (ctx: DomainContext, payload: unknown) => Promise<unknown>;
+  createCommitment?: (ctx: DomainContext, payload: unknown) => Promise<unknown>;
+  recordDecision?: (ctx: DomainContext, payload: unknown) => Promise<unknown>;
+};
+
 export async function applyAiProposal(
   ctx: DomainContext,
   raw: unknown,
-  actions: {
-    addTopicUpdate: (ctx: DomainContext, payload: unknown) => Promise<unknown>;
-    setTopicNextStep: (ctx: DomainContext, payload: unknown) => Promise<unknown>;
-  },
+  actions: ProposalActions,
 ) {
   assertWritable(ctx);
   assertAdmin(ctx);
@@ -202,6 +207,13 @@ export async function applyAiProposal(
   }
 
   const changes = (proposal.proposed_changes ?? {}) as Record<string, unknown>;
+  const unsupported = (type: string): never => {
+    throw new DomainError(
+      "invalid_input",
+      `Tipo de propuesta no soportado para aplicación automática: ${type}`,
+    );
+  };
+
   let outcome: unknown;
   switch (proposal.proposal_type) {
     case "topic_update":
@@ -210,11 +222,23 @@ export async function applyAiProposal(
     case "topic_next_step":
       outcome = await actions.setTopicNextStep(ctx, changes);
       break;
+    case "new_topic":
+      outcome = actions.createTopic
+        ? await actions.createTopic(ctx, changes)
+        : unsupported(proposal.proposal_type);
+      break;
+    case "commitment":
+      outcome = actions.createCommitment
+        ? await actions.createCommitment(ctx, changes)
+        : unsupported(proposal.proposal_type);
+      break;
+    case "decision":
+      outcome = actions.recordDecision
+        ? await actions.recordDecision(ctx, changes)
+        : unsupported(proposal.proposal_type);
+      break;
     default:
-      throw new DomainError(
-        "invalid_input",
-        `Tipo de propuesta no soportado para aplicación automática: ${proposal.proposal_type}`,
-      );
+      unsupported(proposal.proposal_type);
   }
 
   const { error: markError } = await ctx.db

@@ -24,6 +24,13 @@ import {
 import { createSource as createSourceAction, linkSourceToTopic } from "@/domain/sources/actions";
 import { reviewAiProposal, applyAiProposal } from "@/domain/ai/provider";
 import { createIntegration, revokeIntegration } from "@/domain/integrations/actions";
+import {
+  createIngestionConnection as createIngestionConnectionAction,
+  revokeIngestionConnection as revokeIngestionConnectionAction,
+  assignIngestionItemClient,
+  discardIngestionItem,
+} from "@/domain/ingestion/actions";
+import { processIngestionItem } from "@/domain/ai/meeting-processor";
 
 type Json = string | number | boolean | null | Json[] | { [key: string]: Json };
 
@@ -135,6 +142,9 @@ export const applyProposalFn = createServerFn({ method: "POST" })
         applyAiProposal(ctx, raw, {
           addTopicUpdate: addTopicUpdateAction,
           setTopicNextStep: setTopicNextStepAction,
+          createTopic: createTopicAction,
+          createCommitment: createCommitmentAction,
+          recordDecision: recordDecisionAction,
         }),
       context,
       data,
@@ -150,3 +160,30 @@ export const revokeIntegrationFn = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((input: unknown) => mutationInput.parse(input))
   .handler(async ({ context, data }) => runMutation(revokeIntegration, context, data));
+
+export const createIngestionConnectionFn = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((input: unknown) => mutationInput.parse(input))
+  .handler(async ({ context, data }) => runMutation(createIngestionConnectionAction, context, data));
+
+export const revokeIngestionConnectionFn = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((input: unknown) => mutationInput.parse(input))
+  .handler(async ({ context, data }) => runMutation(revokeIngestionConnectionAction, context, data));
+
+export const assignMeetingClientFn = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((input: unknown) => mutationInput.parse(input))
+  .handler(async ({ context, data }) => runMutation(assignIngestionItemClient, context, data));
+
+export const discardMeetingFn = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((input: unknown) => mutationInput.parse(input))
+  .handler(async ({ context, data }) => runMutation(discardIngestionItem, context, data));
+
+export const processMeetingFn = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((input: unknown) => mutationInput.parse(input))
+  .handler(async ({ context, data }) =>
+    runMutation((ctx, raw) => processIngestionItem(ctx, raw), context, data),
+  );

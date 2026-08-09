@@ -61,13 +61,16 @@ describe("handshake", () => {
 
 describe("autenticación", () => {
   for (const reason of ["missing_token", "invalid_token", "revoked_token", "expired_token"] as const) {
-    it(`rechaza tools/list con ${reason}`, async () => {
+    it(`rechaza tools/list con ${reason} sin revelar el motivo`, async () => {
       auth.impl.mockResolvedValue({ ok: false, reason });
       const res = await handleMcpMessage(req("tools/list"), null, deps);
       expect(res?.error?.code).toBe(JSONRPC_ERROR.unauthorized);
-      expect((res?.error?.data as { reason: string }).reason).toBe(reason);
+      // Respuesta uniforme: no debe permitir enumerar tokens ni distinguir causas.
+      expect(res?.error?.message).toBe("No autorizado");
+      expect(JSON.stringify(res?.error)).not.toContain(reason);
     });
   }
+
 
   it("no ejecuta ninguna herramienta sin credencial válida", async () => {
     auth.impl.mockResolvedValue({ ok: false, reason: "invalid_token" });

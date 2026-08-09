@@ -23,6 +23,7 @@ import {
 } from "@/domain/commitments/actions";
 import { createSource as createSourceAction, linkSourceToTopic } from "@/domain/sources/actions";
 import { reviewAiProposal } from "@/domain/ai/provider";
+import { createIntegration, revokeIntegration } from "@/domain/integrations/actions";
 
 type Json = string | number | boolean | null | Json[] | { [key: string]: Json };
 
@@ -69,3 +70,6 @@ export const createSourceFn = mutation(createSourceAction);
 export const linkSourceFn = mutation(linkSourceToTopic);
 
 export const reviewProposalFn = mutation(reviewAiProposal);
+
+export const createIntegrationFn = mutation(createIntegration);
+export const revokeIntegrationFn = mutation(revokeIntegration);

@@ -142,7 +142,7 @@ export const fetchWorkspaceSettings = createServerFn({ method: "POST" })
           .eq("workspace_id", ctx.workspaceId),
         ctx.db
           .from("mcp_integrations")
-          .select("id, name, scopes, write_enabled, last_used_at, expires_at, revoked_at, created_at")
+          .select("id, name, scopes, write_enabled, token_prefix, last_used_at, expires_at, revoked_at, created_at")
           .eq("workspace_id", ctx.workspaceId)
           .order("created_at", { ascending: false }),
         ctx.db.from("workspaces").select("id, name, slug").eq("id", ctx.workspaceId).maybeSingle(),

@@ -156,3 +156,65 @@ export const fetchWorkspaceSettings = createServerFn({ method: "POST" })
       };
     }),
   );
+
+export const fetchMeetings = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((input: unknown) => withWorkspace.parse(input ?? {}))
+  .handler(async ({ context, data }) =>
+    run(async () => {
+      const ctx = await domainCtx(context, data.workspaceId);
+      const [items, connections, clients, proposals] = await Promise.all([
+        ctx.db
+          .from("ingestion_items")
+          .select(
+            "id, connection_id, source_id, client_id, status, title, occurred_at, duration_seconds, participants, language, ai_run_id, proposal_count, error_message, processed_at, created_at",
+          )
+          .eq("workspace_id", ctx.workspaceId)
+          .neq("status", "discarded")
+          .order("created_at", { ascending: false })
+          .limit(60),
+        ctx.db
+          .from("ingestion_connections")
+          .select(
+            "id, name, provider, secret_prefix, default_client_id, enabled, last_used_at, revoked_at, created_at",
+          )
+          .eq("workspace_id", ctx.workspaceId)
+          .order("created_at", { ascending: false }),
+        ctx.db
+          .from("clients")
+          .select("id, name")
+          .eq("workspace_id", ctx.workspaceId)
+          .is("archived_at", null)
+          .order("name", { ascending: true }),
+        ctx.db
+          .from("ai_proposals")
+          .select(
+            "id, ai_run_id, client_id, topic_id, proposal_type, proposed_changes, explanation, confidence, status, created_at",
+          )
+          .eq("workspace_id", ctx.workspaceId)
+          .order("created_at", { ascending: false })
+          .limit(300),
+      ]);
+
+      const topicIds = [
+        ...new Set((proposals.data ?? []).map((p) => p.topic_id).filter((v): v is string => !!v)),
+      ];
+      const topics = topicIds.length
+        ? await ctx.db
+            .from("topics")
+            .select("id, title")
+            .eq("workspace_id", ctx.workspaceId)
+            .in("id", topicIds)
+        : { data: [] as { id: string; title: string }[] };
+
+      return {
+        workspaceId: ctx.workspaceId,
+        role: ctx.role,
+        items: items.data ?? [],
+        connections: connections.data ?? [],
+        clients: clients.data ?? [],
+        proposals: proposals.data ?? [],
+        topicTitles: Object.fromEntries((topics.data ?? []).map((t) => [t.id, t.title])),
+      };
+    }),
+  );

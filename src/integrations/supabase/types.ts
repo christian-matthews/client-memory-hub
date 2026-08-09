@@ -1341,6 +1341,14 @@ export type Database = {
         }
         Returns: string
       }
+      claim_ingestion_item_v1: {
+        Args: {
+          p_client_id?: string
+          p_item_id: string
+          p_workspace_id: string
+        }
+        Returns: Json
+      }
       create_workspace_with_owner: {
         Args: { p_name: string; p_slug?: string }
         Returns: string
@@ -1417,6 +1425,18 @@ export type Database = {
       }
       is_workspace_admin: { Args: { _workspace_id: string }; Returns: boolean }
       is_workspace_member: { Args: { _workspace_id: string }; Returns: boolean }
+      receive_macwhisper_transcript_v1: {
+        Args: {
+          p_connection_id: string
+          p_content_hash: string
+          p_correlation_id?: string
+          p_metadata?: Json
+          p_secret_hash: string
+          p_title: string
+          p_transcript: string
+        }
+        Returns: Json
+      }
       record_activity_v1: {
         Args: {
           p_actor_name?: string

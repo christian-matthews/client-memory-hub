@@ -4,6 +4,7 @@ import {
   evidenceExists,
   normalizeForComparison,
   renderMeetingSummary,
+  buildUserContent,
   type ExtractionItem,
 } from "./meeting-processor";
 
@@ -138,5 +139,40 @@ describe("renderMeetingSummary", () => {
     expect(text).toContain("Informe mensual");
     expect(text).not.toContain("desconocido");
     expect(text).toContain("Hablantes no verificados");
+  });
+});
+
+describe("buildUserContent", () => {
+  const input = {
+    client: { name: "Andes Retail", summary: null },
+    meeting: { title: "Revisión semanal", occurredAt: "2026-08-09T02:53:00Z" },
+    openTopics: [
+      {
+        topicId: TOPIC,
+        title: "Informe mensual",
+        status: "active",
+        ballWith: "us",
+        currentState: "En redacción",
+        nextStep: null,
+      },
+    ],
+    transcript: TRANSCRIPT,
+  };
+
+  it("envía la transcripción literal y delimitada al modelo", () => {
+    const content = buildUserContent(input);
+    expect(content).toContain("<<<TRANSCRIPCION");
+    expect(content).toContain(TRANSCRIPT);
+    expect(content.trim().endsWith("TRANSCRIPCION>>>")).toBe(true);
+  });
+
+  it("incluye el cliente y los topicId exactos disponibles", () => {
+    const content = buildUserContent(input);
+    expect(content).toContain("Andes Retail");
+    expect(content).toContain(TOPIC);
+  });
+
+  it("no acepta una transcripción vacía", () => {
+    expect(() => buildUserContent({ ...input, transcript: "   \n" })).toThrow();
   });
 });

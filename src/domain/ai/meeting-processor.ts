@@ -551,7 +551,9 @@ export async function processIngestionItem(
     const { error: failError } = await privileged.rpc("fail_meeting_extraction_v1", {
       p_workspace_id: ctx.workspaceId,
       p_item_id: itemId,
-      p_ai_run_id: runId,
+      // A failure before the run row exists still clears the item's `processing`.
+      p_ai_run_id: runId as unknown as string,
+
       p_error_code: code,
     });
     if (failError) console.error("fail_meeting_extraction_failed", failError.message);

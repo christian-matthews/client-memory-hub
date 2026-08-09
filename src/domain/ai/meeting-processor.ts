@@ -38,7 +38,7 @@ Reglas estrictas:
 - Responde en español.`;
 
 /** Strict-compatible JSON Schema: every property required, optionals nullable. */
-const EXTRACTION_SCHEMA = {
+export const EXTRACTION_SCHEMA = {
   type: "object",
   additionalProperties: false,
   required: ["summary", "language", "items"],

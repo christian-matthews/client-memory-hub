@@ -1,0 +1,115 @@
+import { z } from "zod";
+
+/**
+ * Domain vocabulary. These mirror the database enums exactly and are the single
+ * source of truth for validation across web, MCP and future HTTP interfaces.
+ */
+
+export const workspaceRoleSchema = z.enum(["owner", "admin", "member"]);
+export const relationshipStatusSchema = z.enum(["active", "paused", "archived"]);
+export const clientHealthSchema = z.enum(["good", "attention", "risk", "unknown"]);
+export const topicStatusSchema = z.enum([
+  "active",
+  "waiting_client",
+  "pending_us",
+  "blocked",
+  "monitoring",
+  "resolved",
+  "archived",
+]);
+export const prioritySchema = z.enum(["high", "medium", "low"]);
+export const partySchema = z.enum(["us", "client", "third_party", "nobody"]);
+export const responsiblePartySchema = z.enum(["us", "client", "third_party"]);
+export const commitmentStatusSchema = z.enum(["open", "completed", "cancelled", "overdue"]);
+export const updateTypeSchema = z.enum(["note", "fact", "decision", "status_change", "milestone"]);
+export const sourceTypeSchema = z.enum([
+  "manual_note",
+  "email",
+  "meeting",
+  "document",
+  "api",
+  "other",
+]);
+export const actorTypeSchema = z.enum(["user", "ai", "system", "integration"]);
+
+export type WorkspaceRole = z.infer<typeof workspaceRoleSchema>;
+export type TopicStatus = z.infer<typeof topicStatusSchema>;
+export type Party = z.infer<typeof partySchema>;
+export type ResponsibleParty = z.infer<typeof responsiblePartySchema>;
+export type CommitmentStatus = z.infer<typeof commitmentStatusSchema>;
+export type ClientHealth = z.infer<typeof clientHealthSchema>;
+export type ActorType = z.infer<typeof actorTypeSchema>;
+
+export const uuidSchema = z.string().uuid();
+export const idempotencyKeySchema = z.string().min(8).max(200).optional();
+export const isoDateSchema = z.string().datetime({ offset: true });
+
+/** Topic statuses that count as "open" memory. */
+export const OPEN_TOPIC_STATUSES: readonly TopicStatus[] = [
+  "active",
+  "waiting_client",
+  "pending_us",
+  "blocked",
+  "monitoring",
+];
+
+export const CLOSED_TOPIC_STATUSES: readonly TopicStatus[] = ["resolved", "archived"];
+
+export function isOpenTopicStatus(status: TopicStatus): boolean {
+  return OPEN_TOPIC_STATUSES.includes(status);
+}
+
+/** Spanish labels used by every UI surface. */
+export const TOPIC_STATUS_LABEL: Record<TopicStatus, string> = {
+  active: "Activo",
+  waiting_client: "Esperando al cliente",
+  pending_us: "Pendiente nuestro",
+  blocked: "Bloqueado",
+  monitoring: "En observación",
+  resolved: "Resuelto",
+  archived: "Archivado",
+};
+
+export const PARTY_LABEL: Record<Party, string> = {
+  us: "Nosotros",
+  client: "Cliente",
+  third_party: "Tercero",
+  nobody: "Nadie",
+};
+
+export const HEALTH_LABEL: Record<ClientHealth, string> = {
+  good: "Sana",
+  attention: "Atención",
+  risk: "Riesgo",
+  unknown: "Sin datos",
+};
+
+export const PRIORITY_LABEL: Record<z.infer<typeof prioritySchema>, string> = {
+  high: "Alta",
+  medium: "Media",
+  low: "Baja",
+};
+
+export const UPDATE_TYPE_LABEL: Record<z.infer<typeof updateTypeSchema>, string> = {
+  note: "Nota",
+  fact: "Hecho",
+  decision: "Decisión",
+  status_change: "Cambio de estado",
+  milestone: "Hito",
+};
+
+export const SOURCE_TYPE_LABEL: Record<z.infer<typeof sourceTypeSchema>, string> = {
+  manual_note: "Nota manual",
+  email: "Correo",
+  meeting: "Reunión",
+  document: "Documento",
+  api: "API",
+  other: "Otra",
+};
+
+export const COMMITMENT_STATUS_LABEL: Record<CommitmentStatus, string> = {
+  open: "Abierto",
+  completed: "Cumplido",
+  cancelled: "Cancelado",
+  overdue: "Vencido",
+};

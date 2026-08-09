@@ -2,7 +2,7 @@ import { z } from "zod";
 import { assertWritable, type DomainContext } from "../shared/context";
 import { DomainError, notFound } from "../shared/errors";
 import { recordActivity } from "../shared/audit";
-import { hashPayload, idempotent } from "../shared/idempotency";
+import { compact, hashPayload, idempotent } from "../shared/idempotency";
 import {
   idempotencyKeySchema,
   partySchema,
@@ -229,7 +229,7 @@ export async function addTopicUpdate(ctx: DomainContext, raw: unknown) {
   // Single PostgreSQL transaction: update + topic patch + decision +
   // commitment + source link + client activity + audit. All or nothing.
   // Idempotency is reserved inside that same transaction.
-  const { data, error } = await ctx.db.rpc("add_topic_update_tx", {
+  const { data, error } = await ctx.db.rpc("add_topic_update_tx", compact({
     p_workspace_id: ctx.workspaceId,
     p_topic_id: input.topicId,
     p_content: input.content,
@@ -254,7 +254,7 @@ export async function addTopicUpdate(ctx: DomainContext, raw: unknown) {
     p_correlation_id: ctx.correlationId,
     p_idempotency_key: input.idempotencyKey ?? undefined,
     p_request_hash: await hashPayload(input),
-  });
+  }));
 
   if (error) {
     const message = error.message ?? "";

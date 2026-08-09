@@ -26,6 +26,11 @@ export async function hashPayload(payload: unknown): Promise<string> {
   return [...new Uint8Array(digest)].map((b) => b.toString(16).padStart(2, "0")).join("");
 }
 
+/** Drops undefined keys so RPC arg objects satisfy exactOptionalPropertyTypes. */
+export function compact<T extends Record<string, unknown>>(obj: T): T {
+  return Object.fromEntries(Object.entries(obj).filter(([, v]) => v !== undefined)) as T;
+}
+
 interface ReserveResult {
   state: "skipped" | "reserved" | "completed" | "conflict" | "in_progress";
   result?: unknown;
@@ -74,7 +79,6 @@ export async function withIdempotency<T extends object>(
       p_key: key,
       p_ok: true,
       p_result: JSON.parse(JSON.stringify({ ...result, replayed: true })),
-      p_error: undefined,
     });
     return result as T;
   } catch (err) {

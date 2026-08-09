@@ -4,8 +4,7 @@ import { DomainError, notFound } from "../shared/errors";
 import { recordActivity } from "../shared/audit";
 import { uuidSchema } from "../shared/vocabulary";
 import { startAiRun, type AiProvider } from "./provider";
-import { resolveAiProvider } from "./gateway";
-import { ingestionItemFields } from "../ingestion/actions";
+import { resolveAiProvider, resolveAiModel } from "./gateway";
 
 /**
  * Meeting extraction.
@@ -14,28 +13,47 @@ import { ingestionItemFields } from "../ingestion/actions";
  * here writes client memory: every extracted item becomes a pending
  * `ai_proposals` row that a human must approve and then explicitly apply
  * through the ordinary domain actions (same validation, RLS and audit as a
- * manual edit). If the model fails, the run is marked failed and the item keeps
- * its transcript — nothing is invented.
+ * manual edit). If the model fails, the run is marked failed with a safe code
+ * and the item keeps its transcript — nothing is invented.
+ *
+ * Two guarantees are enforced here, not left to the model:
+ *  - an item whose evidence quote is not literally present in the transcript is
+ *    DISCARDED (and the reason recorded in the run metadata);
+ *  - ambiguity is never converted into responsibility: a missing owner or
+ *    responsible party means "no proposal" or `nobody`, never `us`.
  */
 
-export const AI_MODEL = "openai/gpt-5.6-sol";
-export const PROMPT_VERSION = "meeting-extraction-v1";
+export const PROMPT_VERSION = "meeting-extraction-v2";
 
-const SYSTEM_INSTRUCTIONS = `Eres un analista de memoria operativa de clientes. Recibes la transcripción de una reunión y el estado actual de los temas abiertos de un cliente.
+const SYSTEM_INSTRUCTIONS = `Eres un analista de memoria operativa de clientes. Recibes la transcripción de una reunión (texto plano, sin audio ni marcas de tiempo fiables) y el estado actual de los temas abiertos de un cliente.
 
-Tu tarea es extraer SOLO lo que la transcripción respalda de forma explícita:
-- actualizaciones relevantes de temas existentes (usa su topicId exacto),
-- temas nuevos que claramente no encajan en ninguno existente,
-- compromisos concretos (quién hace qué y para cuándo),
-- decisiones tomadas.
+Devuelves dos cosas:
+1) un resumen estructurado de la reunión,
+2) elementos accionables que la transcripción respalde de forma EXPLÍCITA.
 
 Reglas estrictas:
 - Nunca inventes hechos, fechas, nombres ni cifras que no estén en la transcripción.
-- Si algo es ambiguo, no lo propongas o baja su confianza.
-- Ignora conversación irrelevante (saludos, temas personales, ruido).
-- Cada elemento debe incluir una cita textual breve de la transcripción como evidencia.
-- Las fechas van en formato ISO 8601 completo con zona (o null si no se menciona).
+- Cada elemento debe incluir en "evidence.quote" una cita LITERAL copiada de la transcripción (sin reescribirla).
+- Si no está claro quién es responsable de un compromiso, deja responsibleParty en null.
+- Si no está claro quién debe dar el siguiente paso, deja nextStepOwner en null y nextStep en null.
+- Si no está claro de quién es la pelota, usa "nobody" o null. NUNCA asumas que es nuestro.
+- Una pregunta abierta NO es un compromiso.
+- Etiquetas como "Speaker 1" no identifican personas: no les atribuyas nombres ni cargos.
+- Las fechas van en formato ISO 8601 completo con zona, o null si no se mencionan.
+- Ignora conversación irrelevante.
 - Responde en español.`;
+
+const SUMMARY_PROPERTIES = {
+  executive: { type: "string" },
+  decisions: { type: "array", items: { type: "string" } },
+  ourCommitments: { type: "array", items: { type: "string" } },
+  clientCommitments: { type: "array", items: { type: "string" } },
+  nextSteps: { type: "array", items: { type: "string" } },
+  risks: { type: "array", items: { type: "string" } },
+  openQuestions: { type: "array", items: { type: "string" } },
+  relatedTopicIds: { type: "array", items: { type: "string" } },
+  proposedNewTopics: { type: "array", items: { type: "string" } },
+} as const;
 
 /** Strict-compatible JSON Schema: every property required, optionals nullable. */
 export const EXTRACTION_SCHEMA = {
@@ -43,8 +61,13 @@ export const EXTRACTION_SCHEMA = {
   additionalProperties: false,
   required: ["summary", "language", "items"],
   properties: {
-    summary: { type: "string" },
     language: { type: "string" },
+    summary: {
+      type: "object",
+      additionalProperties: false,
+      required: Object.keys(SUMMARY_PROPERTIES),
+      properties: SUMMARY_PROPERTIES,
+    },
     items: {
       type: "array",
       items: {
@@ -98,7 +121,15 @@ export const EXTRACTION_SCHEMA = {
           },
           responsibleName: { type: ["string", "null"] },
           confidence: { type: "number" },
-          evidence: { type: "string" },
+          evidence: {
+            type: "object",
+            additionalProperties: false,
+            required: ["quote", "speakerLabel"],
+            properties: {
+              quote: { type: "string" },
+              speakerLabel: { type: ["string", "null"] },
+            },
+          },
         },
       },
     },
@@ -108,8 +139,8 @@ export const EXTRACTION_SCHEMA = {
 const extractionItemSchema = z.object({
   kind: z.enum(["topic_update", "new_topic", "commitment", "decision"]),
   topicId: z.string().nullable(),
-  title: z.string().default(""),
-  content: z.string().default(""),
+  title: z.string(),
+  content: z.string(),
   suggestedStatus: z
     .enum(["active", "waiting_client", "pending_us", "blocked", "monitoring", "resolved"])
     .nullable(),
@@ -119,16 +150,30 @@ const extractionItemSchema = z.object({
   dueAt: z.string().nullable(),
   responsibleParty: z.enum(["us", "client", "third_party"]).nullable(),
   responsibleName: z.string().nullable(),
-  confidence: z.number().min(0).max(1).catch(0.5),
-  evidence: z.string().default(""),
+  // No `.catch()`: an invalid confidence is an invalid item, not a guess.
+  confidence: z.number().min(0).max(1),
+  evidence: z.object({ quote: z.string(), speakerLabel: z.string().nullable() }),
+});
+export type ExtractionItem = z.infer<typeof extractionItemSchema>;
+
+const summarySchema = z.object({
+  executive: z.string(),
+  decisions: z.array(z.string()),
+  ourCommitments: z.array(z.string()),
+  clientCommitments: z.array(z.string()),
+  nextSteps: z.array(z.string()),
+  risks: z.array(z.string()),
+  openQuestions: z.array(z.string()),
+  relatedTopicIds: z.array(z.string()),
+  proposedNewTopics: z.array(z.string()),
 });
 
 const extractionSchema = z.object({
-  summary: z.string().default(""),
-  language: z.string().default("es"),
-  items: z.array(extractionItemSchema).default([]),
+  language: z.string(),
+  summary: summarySchema,
+  items: z.array(z.unknown()),
 });
-export type MeetingExtraction = z.infer<typeof extractionSchema>;
+export type MeetingSummary = z.infer<typeof summarySchema>;
 
 /** Only ISO timestamps survive; anything else becomes null instead of guessing. */
 function safeIso(value: string | null): string | null {
@@ -142,10 +187,71 @@ function clampText(value: string, max: number): string {
   return value.trim().slice(0, max);
 }
 
+/** Whitespace-only normalisation: the transcript itself is never modified. */
+export function normalizeForComparison(value: string): string {
+  return value.replace(/\s+/g, " ").trim().toLowerCase();
+}
+
+/** A quote must exist literally (modulo whitespace) in the transcript. */
+export function evidenceExists(quote: string, transcript: string): boolean {
+  const needle = normalizeForComparison(quote);
+  if (needle.length < 8) return false;
+  return normalizeForComparison(transcript).includes(needle);
+}
+
+export interface ProposalEvidence {
+  quote: string;
+  speaker_label: string | null;
+  start_seconds: number | null;
+  end_seconds: number | null;
+}
+
+const WARNING_LINES = [
+  "Fuente: texto plano enviado por MacWhisper.",
+  "Sin audio, sin marcas de tiempo estructuradas.",
+  "Hablantes no verificados: las etiquetas del texto no certifican identidades.",
+];
+
+/** Human-readable derivative persisted next to the original evidence. */
+export function renderMeetingSummary(
+  summary: MeetingSummary,
+  topicTitles: Record<string, string>,
+): string {
+  const list = (label: string, values: string[]) =>
+    values.length > 0 ? `## ${label}\n${values.map((v) => `- ${v}`).join("\n")}` : `## ${label}\n- —`;
+
+  const related = summary.relatedTopicIds
+    .map((id) => topicTitles[id])
+    .filter((title): title is string => Boolean(title));
+
+  return [
+    `## Resumen ejecutivo\n${summary.executive.trim() || "—"}`,
+    list("Decisiones", summary.decisions),
+    list("Compromisos nuestros", summary.ourCommitments),
+    list("Compromisos del cliente", summary.clientCommitments),
+    list("Próximos pasos", summary.nextSteps),
+    list("Riesgos", summary.risks),
+    list("Preguntas abiertas", summary.openQuestions),
+    list("Temas existentes relacionados", related),
+    list("Temas nuevos propuestos", summary.proposedNewTopics),
+    `## Advertencia sobre la calidad de la fuente\n${WARNING_LINES.map((l) => `- ${l}`).join("\n")}`,
+  ].join("\n\n");
+}
+
 export const processIngestionItemInput = z.object({
   itemId: uuidSchema,
   clientId: uuidSchema.optional().nullable(),
 });
+
+const CLAIM_ERRORS: Record<string, [code: "conflict" | "not_found" | "invalid_input", string]> = {
+  item_not_found: ["not_found", "Reunión no encontrada en este espacio de trabajo"],
+  item_discarded: ["invalid_input", "La reunión fue descartada"],
+  item_already_processing: ["conflict", "Esta reunión ya se está procesando"],
+  item_without_evidence: ["invalid_input", "La reunión no tiene evidencia asociada"],
+  client_required: ["invalid_input", "Asigna un cliente antes de analizar la reunión"],
+  client_not_found: ["not_found", "Cliente no encontrado en este espacio de trabajo"],
+  forbidden_workspace: ["invalid_input", "Sin acceso a este espacio de trabajo"],
+};
 
 export async function processIngestionItem(
   ctx: DomainContext,
@@ -156,31 +262,34 @@ export async function processIngestionItem(
   assertAdmin(ctx);
   const input = processIngestionItemInput.parse(raw);
 
-  const { data: item, error: itemError } = await ctx.db
-    .from("ingestion_items")
-    .select(ingestionItemFields)
-    .eq("workspace_id", ctx.workspaceId)
-    .eq("id", input.itemId)
-    .maybeSingle();
-  if (itemError) throw new DomainError("internal", itemError.message);
-  if (!item) throw notFound("Reunión no encontrada en este espacio de trabajo");
-  if (item.status === "processing") {
-    throw new DomainError("conflict", "Esta reunión ya se está procesando");
+  // Atomic transition to `processing`: two concurrent runs are impossible and a
+  // discarded item can never be processed.
+  const { data: claimData, error: claimError } = await ctx.db.rpc("claim_ingestion_item_v1", {
+    p_workspace_id: ctx.workspaceId,
+    p_item_id: input.itemId,
+    ...(input.clientId ? { p_client_id: input.clientId } : {}),
+  });
+  if (claimError) {
+    const rawMessage = claimError.message ?? "";
+    for (const [token, [code, message]] of Object.entries(CLAIM_ERRORS)) {
+      if (rawMessage.includes(token)) {
+        if (code === "not_found") throw notFound(message);
+        throw new DomainError(code, message);
+      }
+    }
+    throw new DomainError("internal", rawMessage);
   }
-  if (item.status === "discarded") {
-    throw new DomainError("invalid_input", "La reunión fue descartada");
-  }
+  const claim = (claimData ?? {}) as {
+    item_id: string;
+    source_id: string;
+    client_id: string;
+    title: string | null;
+    occurred_at: string | null;
+  };
 
-  const clientId = input.clientId ?? item.client_id;
-  if (!clientId) {
-    throw new DomainError(
-      "invalid_input",
-      "Asigna un cliente a la reunión antes de procesarla con IA",
-    );
-  }
-  if (!item.source_id) {
-    throw new DomainError("invalid_input", "La reunión no tiene evidencia asociada");
-  }
+  const itemId = claim.item_id;
+  const clientId = claim.client_id;
+  const model = resolveAiModel();
 
   const [{ data: client }, { data: source }, { data: topics }] = await Promise.all([
     ctx.db
@@ -193,7 +302,7 @@ export async function processIngestionItem(
       .from("sources")
       .select("id, content_text, occurred_at, title")
       .eq("workspace_id", ctx.workspaceId)
-      .eq("id", item.source_id)
+      .eq("id", claim.source_id)
       .maybeSingle(),
     ctx.db
       .from("topics")
@@ -209,17 +318,12 @@ export async function processIngestionItem(
 
   const provider = injectedProvider ?? resolveAiProvider();
   const openTopics = topics ?? [];
-
-  await ctx.db
-    .from("ingestion_items")
-    .update({ status: "processing", client_id: clientId, error_message: null })
-    .eq("workspace_id", ctx.workspaceId)
-    .eq("id", item.id);
+  const transcript = source.content_text;
 
   const runId = await startAiRun(ctx, {
     purpose: "meeting_extraction",
     provider: provider.name,
-    model: AI_MODEL,
+    model,
     promptVersion: PROMPT_VERSION,
     sourceIds: [source.id],
   });
@@ -231,10 +335,15 @@ export async function processIngestionItem(
       structuredInput: {
         client: { name: client.name, summary: client.current_summary ?? null },
         meeting: {
-          title: item.title,
-          occurredAt: item.occurred_at ?? source.occurred_at,
-          participants: item.participants,
-          transcript: source.content_text.slice(0, 120000),
+          title: claim.title,
+          occurredAt: claim.occurred_at ?? source.occurred_at,
+          sourceQuality: {
+            format: "plain_text",
+            hasAudio: false,
+            hasTimestamps: false,
+            speakerIdentityReliable: false,
+          },
+          transcript: transcript.slice(0, 120000),
         },
         openTopics: openTopics.map((t) => ({
           topicId: t.id,
@@ -247,38 +356,96 @@ export async function processIngestionItem(
       },
       sourceIds: [source.id],
       expectedSchema: EXTRACTION_SCHEMA as unknown as Record<string, unknown>,
-      modelConfig: { model: AI_MODEL, promptVersion: PROMPT_VERSION },
+      modelConfig: { model, promptVersion: PROMPT_VERSION },
       workspaceContext: { workspaceId: ctx.workspaceId, clientId },
     });
 
     const extraction = extractionSchema.parse(response.structuredOutput);
     const validTopicIds = new Set(openTopics.map((t) => t.id));
+    const topicTitles = Object.fromEntries(openTopics.map((t) => [t.id, t.title]));
 
-    const proposals = extraction.items
-      .map((entry) => buildProposal(entry, { clientId, sourceId: source.id, validTopicIds }))
-      .filter((p): p is ProposalRow => p !== null)
-      .map((p) => ({
-        workspace_id: ctx.workspaceId,
-        ai_run_id: runId,
-        client_id: clientId,
-        topic_id: p.topicId,
-        proposal_type: p.proposalType,
-        proposed_changes: p.proposedChanges as never,
-        explanation: p.explanation,
-        confidence: p.confidence,
-        status: "pending" as const,
-      }));
+    const discarded: { reason: string; kind?: string }[] = [];
+    const rows: ProposalRow[] = [];
+
+    for (const candidate of extraction.items) {
+      const parsedItem = extractionItemSchema.safeParse(candidate);
+      if (!parsedItem.success) {
+        discarded.push({ reason: "invalid_item_shape" });
+        continue;
+      }
+      const entry = parsedItem.data;
+      const quote = entry.evidence.quote.trim();
+      if (!quote) {
+        discarded.push({ reason: "evidence_missing", kind: entry.kind });
+        continue;
+      }
+      if (!evidenceExists(quote, transcript)) {
+        discarded.push({ reason: "evidence_not_in_transcript", kind: entry.kind });
+        continue;
+      }
+      const row = buildProposal(entry, { clientId, sourceId: source.id, validTopicIds });
+      if (!row) {
+        discarded.push({ reason: "not_actionable_or_ambiguous", kind: entry.kind });
+        continue;
+      }
+      rows.push(row);
+    }
+
+    const proposals = rows.map((p) => ({
+      workspace_id: ctx.workspaceId,
+      ai_run_id: runId,
+      client_id: clientId,
+      topic_id: p.topicId,
+      proposal_type: p.proposalType,
+      proposed_changes: p.proposedChanges as never,
+      explanation: p.explanation,
+      confidence: p.confidence,
+      evidence: p.evidence as never,
+      status: "pending" as const,
+    }));
 
     if (proposals.length > 0) {
       const { error: proposalError } = await ctx.db.from("ai_proposals").insert(proposals);
       if (proposalError) throw new DomainError("internal", proposalError.message);
     }
 
+    const summaryText = renderMeetingSummary(extraction.summary, topicTitles);
+
+    // Immutable derivative: a new run always creates a new version.
+    const { error: derivativeError } = await ctx.db.from("source_derivatives").insert({
+      workspace_id: ctx.workspaceId,
+      source_id: source.id,
+      ai_run_id: runId,
+      derivative_type: "meeting_summary",
+      content_text: summaryText,
+      language: extraction.language.slice(0, 20),
+      prompt_version: PROMPT_VERSION,
+      provider: provider.name,
+      model,
+      metadata: {
+        proposalCount: proposals.length,
+        discarded,
+        sourceQuality: {
+          format: "plain_text",
+          hasAudio: false,
+          hasTimestamps: false,
+          speakerIdentityReliable: false,
+        },
+      } as never,
+    });
+    if (derivativeError) throw new DomainError("internal", derivativeError.message);
+
     await ctx.db
       .from("ai_runs")
       .update({
         status: "completed",
-        structured_output: extraction as never,
+        structured_output: {
+          summary: extraction.summary,
+          language: extraction.language,
+          proposalCount: proposals.length,
+          discarded,
+          usage: response.usage ?? null,
+        } as never,
         completed_at: new Date().toISOString(),
       })
       .eq("workspace_id", ctx.workspaceId)
@@ -287,71 +454,95 @@ export async function processIngestionItem(
     await ctx.db
       .from("ingestion_items")
       .update({
-        status: "processed",
+        status: proposals.length > 0 ? "needs_review" : "processed",
         client_id: clientId,
         ai_run_id: runId,
+        language: extraction.language.slice(0, 20),
         proposal_count: proposals.length,
         processed_at: new Date().toISOString(),
         error_message: null,
+        error_code: null,
       })
       .eq("workspace_id", ctx.workspaceId)
-      .eq("id", item.id);
+      .eq("id", itemId);
 
     await recordActivity(ctx, {
       eventType: "ingestion_item.processed",
       entityType: "ingestion_item",
-      entityId: item.id,
+      entityId: itemId,
       clientId,
       description: `Reunión analizada con IA: ${proposals.length} propuesta(s) para revisar`,
-      inputSummary: clampText(extraction.summary, 200),
-      metadata: { aiRunId: runId, model: AI_MODEL, promptVersion: PROMPT_VERSION },
+      inputSummary: clampText(extraction.summary.executive, 200),
+      metadata: {
+        aiRunId: runId,
+        model,
+        promptVersion: PROMPT_VERSION,
+        discardedCount: discarded.length,
+      },
     });
 
     return {
-      itemId: item.id,
+      itemId,
       aiRunId: runId,
       proposalCount: proposals.length,
-      summary: extraction.summary,
+      discardedCount: discarded.length,
+      summary: summaryText,
     };
   } catch (error) {
-    const message = error instanceof Error ? error.message : "Error de IA desconocido";
+    // Only a safe code is persisted; the provider/database detail stays in logs.
+    const code =
+      error instanceof DomainError && error.code !== "internal" ? error.code : "ai_run_failed";
+    console.error("meeting_extraction_failed", { itemId, runId, error });
     await ctx.db
       .from("ai_runs")
-      .update({ status: "failed", error_message: message.slice(0, 1000), completed_at: new Date().toISOString() })
+      .update({ status: "failed", error_message: code, completed_at: new Date().toISOString() })
       .eq("workspace_id", ctx.workspaceId)
       .eq("id", runId);
     await ctx.db
       .from("ingestion_items")
-      .update({ status: "failed", ai_run_id: runId, error_message: message.slice(0, 1000) })
+      .update({ status: "failed", ai_run_id: runId, error_message: null, error_code: code })
       .eq("workspace_id", ctx.workspaceId)
-      .eq("id", item.id);
+      .eq("id", itemId);
     throw error;
   }
 }
 
-interface ProposalRow {
+export interface ProposalRow {
   proposalType: string;
   topicId: string | null;
   proposedChanges: Record<string, unknown>;
   explanation: string;
   confidence: number;
+  evidence: ProposalEvidence;
 }
 
 /**
  * Maps one extracted item to a proposal whose `proposed_changes` is EXACTLY the
  * payload of an existing domain action. Applying a proposal therefore runs the
  * same validated path as a human edit — no separate write path exists.
+ *
+ * Ambiguity never becomes responsibility: there is no `?? "us"` anywhere here.
  */
 export function buildProposal(
-  entry: z.infer<typeof extractionItemSchema>,
+  entry: ExtractionItem,
   ctx: { clientId: string; sourceId: string; validTopicIds: Set<string> },
 ): ProposalRow | null {
   const content = clampText(entry.content, 5000);
   const title = clampText(entry.title, 200);
-  const evidence = clampText(entry.evidence, 500);
+  const quote = clampText(entry.evidence.quote, 500);
+  if (!quote) return null;
   const dueAt = safeIso(entry.dueAt);
   const topicId = entry.topicId && ctx.validTopicIds.has(entry.topicId) ? entry.topicId : null;
-  const explanation = evidence ? `Evidencia: “${evidence}”` : "Sin cita textual asociada";
+  const evidence: ProposalEvidence = {
+    quote,
+    // Plain-text speaker labels are not verified identities.
+    speaker_label: entry.evidence.speakerLabel ? clampText(entry.evidence.speakerLabel, 80) : null,
+    start_seconds: null,
+    end_seconds: null,
+  };
+  const explanation = `Evidencia: “${quote}”`;
+  // A next step is only proposed when the transcript names its owner.
+  const hasOwnedNextStep = Boolean(entry.nextStep?.trim()) && entry.nextStepOwner !== null;
 
   switch (entry.kind) {
     case "topic_update": {
@@ -366,10 +557,10 @@ export function buildProposal(
           isRelevant: true,
           ...(entry.suggestedStatus ? { status: entry.suggestedStatus } : {}),
           ...(entry.ballWith ? { ballWith: entry.ballWith } : {}),
-          ...(entry.nextStep
+          ...(hasOwnedNextStep
             ? {
-                nextStep: clampText(entry.nextStep, 500),
-                nextStepOwner: entry.nextStepOwner ?? "us",
+                nextStep: clampText(entry.nextStep as string, 500),
+                nextStepOwner: entry.nextStepOwner,
                 nextStepDueAt: dueAt,
               }
             : {}),
@@ -377,6 +568,7 @@ export function buildProposal(
         },
         explanation,
         confidence: entry.confidence,
+        evidence,
       };
     }
     case "new_topic": {
@@ -390,30 +582,38 @@ export function buildProposal(
           description: content || null,
           status: entry.suggestedStatus ?? "active",
           priority: "medium",
-          ballWith: entry.ballWith ?? "us",
+          // Unknown ball ownership stays with nobody.
+          ballWith: entry.ballWith ?? "nobody",
           currentState: clampText(content, 2000),
-          nextStep: entry.nextStep ? clampText(entry.nextStep, 500) : null,
-          nextStepOwner: entry.nextStepOwner ?? "nobody",
-          nextStepDueAt: dueAt,
+          ...(hasOwnedNextStep
+            ? {
+                nextStep: clampText(entry.nextStep as string, 500),
+                nextStepOwner: entry.nextStepOwner,
+                nextStepDueAt: dueAt,
+              }
+            : { nextStep: null, nextStepOwner: "nobody", nextStepDueAt: null }),
         },
         explanation,
         confidence: entry.confidence,
+        evidence,
       };
     }
     case "commitment": {
-      if (!topicId || !content) return null;
+      // No explicit responsible party means no commitment proposal at all.
+      if (!topicId || !content || entry.responsibleParty === null) return null;
       return {
         proposalType: "commitment",
         topicId,
         proposedChanges: {
           topicId,
           description: clampText(content, 500),
-          responsibleParty: entry.responsibleParty ?? "us",
+          responsibleParty: entry.responsibleParty,
           responsibleName: entry.responsibleName ? clampText(entry.responsibleName, 160) : null,
           dueAt,
         },
         explanation,
         confidence: entry.confidence,
+        evidence,
       };
     }
     case "decision": {
@@ -428,6 +628,7 @@ export function buildProposal(
         },
         explanation,
         confidence: entry.confidence,
+        evidence,
       };
     }
     default:

@@ -1,5 +1,6 @@
 import { DomainError } from "./errors";
 import type { DomainContext } from "./context";
+import { compact } from "./idempotency";
 
 export interface AuditEvent {
   eventType: string;
@@ -28,7 +29,9 @@ export interface AuditEvent {
  * transaction by `domain_write` (see ./write.ts) and never reach this helper.
  */
 export async function recordActivity(ctx: DomainContext, event: AuditEvent): Promise<void> {
-  const { error } = await ctx.db.rpc("record_activity_v1", {
+  const { error } = await ctx.db.rpc(
+    "record_activity_v1",
+    compact({
     p_workspace_id: ctx.workspaceId,
     p_event: {
       eventType: event.eventType,
@@ -44,8 +47,9 @@ export async function recordActivity(ctx: DomainContext, event: AuditEvent): Pro
     // Ignored for human callers; used by privileged server/MCP paths.
     p_actor_type: ctx.actor.type,
     p_actor_name: ctx.actor.name ?? undefined,
-    p_correlation_id: ctx.correlationId,
-  });
+      p_correlation_id: ctx.correlationId,
+    }),
+  );
   if (error) {
     const message = error.message ?? "";
     if (message.includes("forbidden_workspace") || message.includes("forbidden_actor")) {

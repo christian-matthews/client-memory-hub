@@ -1,7 +1,7 @@
 import { DomainError, notFound } from "./errors";
 import type { DomainContext } from "./context";
 import { assertWritable } from "./context";
-import { hashPayload } from "./idempotency";
+import { compact, hashPayload } from "./idempotency";
 
 /**
  * Transactional write dispatcher.
@@ -51,22 +51,28 @@ export async function domainWrite<T extends Record<string, unknown>>(
 
   const { data, error } =
     ctx.actor.type === "integration" && ctx.integrationId
-      ? await ctx.db.rpc("domain_write_as_integration", {
-          p_integration_id: ctx.integrationId,
-          p_operation: operation,
-          p_payload: cleanPayload as never,
-          p_request_hash: requestHash,
-          p_idempotency_key: key ?? undefined,
-          p_correlation_id: ctx.correlationId,
-        })
-      : await ctx.db.rpc("domain_write", {
-          p_workspace_id: ctx.workspaceId,
-          p_operation: operation,
-          p_payload: cleanPayload as never,
-          p_request_hash: requestHash,
-          p_idempotency_key: key ?? undefined,
-          p_correlation_id: ctx.correlationId,
-        });
+      ? await ctx.db.rpc(
+          "domain_write_as_integration",
+          compact({
+            p_integration_id: ctx.integrationId,
+            p_operation: operation,
+            p_payload: cleanPayload as never,
+            p_request_hash: requestHash,
+            p_idempotency_key: key ?? undefined,
+            p_correlation_id: ctx.correlationId,
+          }),
+        )
+      : await ctx.db.rpc(
+          "domain_write",
+          compact({
+            p_workspace_id: ctx.workspaceId,
+            p_operation: operation,
+            p_payload: cleanPayload as never,
+            p_request_hash: requestHash,
+            p_idempotency_key: key ?? undefined,
+            p_correlation_id: ctx.correlationId,
+          }),
+        );
 
   if (error) {
     const raw = error.message ?? "";

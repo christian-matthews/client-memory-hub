@@ -61,6 +61,28 @@ function unauthorized() {
 export const Route = createFileRoute("/api/public/ingest/macwhisper/$connectionId/$secret")({
   server: {
     handlers: {
+      /**
+       * Real credential test. Verifies the exact same (connectionId, secret) pair
+       * an inbound POST would use, and stores NOTHING: no evidence, no inbox
+       * item, no meeting. 204 = this URL would be accepted; 401 = it would not.
+       */
+      GET: async ({ request, params }) => {
+        const ip =
+          request.headers.get("cf-connecting-ip") ??
+          request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ??
+          "unknown";
+        if (rateLimited(`probe:${params.connectionId}|${ip}`)) {
+          return json({ ok: false, error: "rate_limited" }, 429);
+        }
+        const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+        const auth = await authenticateIngestionConnection(
+          supabaseAdmin as unknown as Db,
+          params.connectionId,
+          params.secret,
+        );
+        if (!auth.ok) return unauthorized();
+        return new Response(null, { status: 204, headers: SECURITY_HEADERS });
+      },
       POST: async ({ request, params }) => {
         const ip =
           request.headers.get("cf-connecting-ip") ??
@@ -75,29 +97,24 @@ export const Route = createFileRoute("/api/public/ingest/macwhisper/$connectionI
           return json({ ok: false, error: "payload_too_large" }, 413);
         }
 
+        // Single contract: JSON only, exactly { transcript, title? }.
+        const contentType = request.headers.get("content-type") ?? "";
+        if (!contentType.toLowerCase().includes("application/json")) {
+          return json({ ok: false, error: "unsupported_media_type" }, 415);
+        }
+
         const rawBody = await request.text();
         if (new TextEncoder().encode(rawBody).byteLength > MAX_BODY_BYTES) {
           return json({ ok: false, error: "payload_too_large" }, 413);
         }
 
         let payload: unknown;
-        const contentType = request.headers.get("content-type") ?? "";
-        if (contentType.includes("application/json")) {
-          try {
-            payload = JSON.parse(rawBody);
-          } catch {
-            return json({ ok: false, error: "invalid_json" }, 400);
-          }
-        } else if (rawBody.trim().startsWith("{")) {
-          try {
-            payload = JSON.parse(rawBody);
-          } catch {
-            return json({ ok: false, error: "invalid_json" }, 400);
-          }
-        } else {
-          // MacWhisper can POST the raw transcript as text/plain.
-          payload = { transcript: rawBody };
+        try {
+          payload = JSON.parse(rawBody);
+        } catch {
+          return json({ ok: false, error: "invalid_json" }, 400);
         }
+
 
         // Service role: the caller has no session. The lookup is by id + hash
         // only, and everything after this point is scoped to that workspace.

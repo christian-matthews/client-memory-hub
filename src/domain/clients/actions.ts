@@ -70,12 +70,13 @@ export async function updateClient(ctx: DomainContext, raw: unknown) {
   await fetchClient(ctx, input.clientId);
 
   const patch: Record<string, unknown> = {};
-  if (input.name !== undefined) patch['name'] = input.name;
-  if (input.description !== undefined) patch['description'] = input.description;
-  if (input.currentSummary !== undefined) patch['current_summary'] = input.currentSummary;
-  if (input.health !== undefined) patch['health'] = input.health;
-  if (input.relationshipStatus !== undefined) patch['relationship_status'] = input.relationshipStatus;
-  if (input.ownerUserId !== undefined) patch['owner_user_id'] = input.ownerUserId;
+  if (input.name !== undefined) patch["name"] = input.name;
+  if (input.description !== undefined) patch["description"] = input.description;
+  if (input.currentSummary !== undefined) patch["current_summary"] = input.currentSummary;
+  if (input.health !== undefined) patch["health"] = input.health;
+  if (input.relationshipStatus !== undefined)
+    patch["relationship_status"] = input.relationshipStatus;
+  if (input.ownerUserId !== undefined) patch["owner_user_id"] = input.ownerUserId;
   if (Object.keys(patch).length === 0) return { client: await fetchClient(ctx, input.clientId) };
 
   const { data, error } = await ctx.db

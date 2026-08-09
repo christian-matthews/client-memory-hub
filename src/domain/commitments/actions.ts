@@ -87,4 +87,3 @@ export async function cancelCommitment(ctx: DomainContext, raw: unknown) {
   });
   return { commitment: data };
 }
-

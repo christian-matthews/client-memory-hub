@@ -32,28 +32,31 @@ export async function recordActivity(ctx: DomainContext, event: AuditEvent): Pro
   const { error } = await ctx.db.rpc(
     "record_activity_v1",
     compact({
-    p_workspace_id: ctx.workspaceId,
-    p_event: {
-      eventType: event.eventType,
-      entityType: event.entityType,
-      entityId: event.entityId ?? null,
-      description: event.description,
-      clientId: event.clientId ?? null,
-      topicId: event.topicId ?? null,
-      inputSummary: event.inputSummary ?? null,
-      metadata: event.metadata ?? {},
-      idempotencyKey: event.idempotencyKey ?? null,
-    } as never,
-    // Ignored for human callers; used by privileged server/MCP paths.
-    p_actor_type: ctx.actor.type,
-    p_actor_name: ctx.actor.name ?? undefined,
+      p_workspace_id: ctx.workspaceId,
+      p_event: {
+        eventType: event.eventType,
+        entityType: event.entityType,
+        entityId: event.entityId ?? null,
+        description: event.description,
+        clientId: event.clientId ?? null,
+        topicId: event.topicId ?? null,
+        inputSummary: event.inputSummary ?? null,
+        metadata: event.metadata ?? {},
+        idempotencyKey: event.idempotencyKey ?? null,
+      } as never,
+      // Ignored for human callers; used by privileged server/MCP paths.
+      p_actor_type: ctx.actor.type,
+      p_actor_name: ctx.actor.name ?? undefined,
       p_correlation_id: ctx.correlationId,
     }),
   );
   if (error) {
     const message = error.message ?? "";
     if (message.includes("forbidden_workspace") || message.includes("forbidden_actor")) {
-      throw new DomainError("forbidden", "Auditoría rechazada: actor o espacio de trabajo inválido");
+      throw new DomainError(
+        "forbidden",
+        "Auditoría rechazada: actor o espacio de trabajo inválido",
+      );
     }
     throw new DomainError("internal", `No se pudo registrar la auditoría: ${message}`);
   }

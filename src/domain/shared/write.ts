@@ -27,7 +27,10 @@ export type DomainOperation =
   | "complete_commitment";
 
 const ERROR_MAP: Record<string, [code: "conflict" | "not_found" | "forbidden", message: string]> = {
-  idempotency_conflict: ["conflict", "La clave de idempotencia ya se usó con otra operación o contenido"],
+  idempotency_conflict: [
+    "conflict",
+    "La clave de idempotencia ya se usó con otra operación o contenido",
+  ],
   client_not_found: ["not_found", "Cliente no encontrado en este espacio de trabajo"],
   topic_not_found: ["not_found", "Tema no encontrado en este espacio de trabajo"],
   commitment_not_found: ["not_found", "Compromiso no encontrado en este espacio de trabajo"],
@@ -86,5 +89,5 @@ export async function domainWrite<T extends Record<string, unknown>>(
   }
 
   const result = (data ?? {}) as Record<string, unknown>;
-  return { ...result, replayed: result['replayed'] === true } as T & { replayed: boolean };
+  return { ...result, replayed: result["replayed"] === true } as T & { replayed: boolean };
 }

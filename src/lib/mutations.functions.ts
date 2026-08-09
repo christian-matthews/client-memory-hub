@@ -22,11 +22,13 @@ import {
   cancelCommitment as cancelCommitmentAction,
 } from "@/domain/commitments/actions";
 import { createSource as createSourceAction, linkSourceToTopic } from "@/domain/sources/actions";
-import { reviewAiProposal, applyAiProposal } from "@/domain/ai/provider";
+import { reviewAiProposal, applyAiProposal, editAiProposal } from "@/domain/ai/provider";
 import { createIntegration, revokeIntegration } from "@/domain/integrations/actions";
 import {
   createIngestionConnection as createIngestionConnectionAction,
   revokeIngestionConnection as revokeIngestionConnectionAction,
+  rotateIngestionConnectionSecret,
+  checkIngestionConnection,
   assignIngestionItemClient,
   discardIngestionItem,
 } from "@/domain/ingestion/actions";
@@ -187,3 +189,18 @@ export const processMeetingFn = createServerFn({ method: "POST" })
   .handler(async ({ context, data }) =>
     runMutation((ctx, raw) => processIngestionItem(ctx, raw), context, data),
   );
+
+export const rotateIngestionConnectionFn = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((input: unknown) => mutationInput.parse(input))
+  .handler(async ({ context, data }) => runMutation(rotateIngestionConnectionSecret, context, data));
+
+export const checkIngestionConnectionFn = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((input: unknown) => mutationInput.parse(input))
+  .handler(async ({ context, data }) => runMutation(checkIngestionConnection, context, data));
+
+export const editProposalFn = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((input: unknown) => mutationInput.parse(input))
+  .handler(async ({ context, data }) => runMutation(editAiProposal, context, data));

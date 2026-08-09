@@ -87,13 +87,18 @@ BEGIN
     format('INSERT INTO activity_events (workspace_id, actor_type, event_type, entity_type, description) VALUES (%L,''user'',''x'',''y'',''z'')', f.ws_a),
     'insert directo en activity_events');
 
-  -- Evento como IA / integración
-  PERFORM pg_temp.must_fail(f.u_a,
-    format('SELECT record_activity_v1(%L, ''{"eventType":"x","entityType":"y","description":"z"}''::jsonb, ''ai'')', f.ws_a),
-    'registrar evento como IA (privilegio)');
-  PERFORM pg_temp.must_fail(f.u_a,
-    format('SELECT record_activity_v1(%L, ''{"eventType":"x","entityType":"y","description":"z"}''::jsonb, ''integration'')', f.ws_a),
-    'registrar evento como integración');
+  -- Evento como IA / integración: el tipo pedido se ignora y se fuerza 'user'
+  PERFORM pg_temp.as_user(f.u_a,
+    format('SELECT record_activity_v1(%L, ''{"eventType":"spoof_ai","entityType":"y","description":"z"}''::jsonb, ''ai'')', f.ws_a));
+  PERFORM pg_temp.as_user(f.u_a,
+    format('SELECT record_activity_v1(%L, ''{"eventType":"spoof_int","entityType":"y","description":"z"}''::jsonb, ''integration'')', f.ws_a));
+  SELECT count(*) INTO n FROM activity_events
+   WHERE workspace_id=f.ws_a::uuid AND event_type IN ('spoof_ai','spoof_int') AND actor_type='user' AND actor_user_id=f.u_a::uuid;
+  IF n <> 2 THEN RAISE EXCEPTION 'FALLA: un usuario logró registrar eventos como IA/integración'; END IF;
+  IF EXISTS (SELECT 1 FROM activity_events WHERE workspace_id=f.ws_a::uuid AND actor_type IN ('ai','integration') AND event_type LIKE 'spoof%') THEN
+    RAISE EXCEPTION 'FALLA: actor_type falsificado persistido';
+  END IF;
+  RAISE NOTICE 'ok: actor_type solicitado por el navegador se ignora y se fuerza user';
 
   -- Otro workspace
   PERFORM pg_temp.must_fail(f.u_a,

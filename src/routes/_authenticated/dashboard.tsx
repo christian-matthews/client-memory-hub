@@ -176,7 +176,13 @@ function Stat({ label, value }: { label: string; value: number }) {
   );
 }
 
-function EmptyState({ workspaceId, filter }: { workspaceId?: string; filter: Filter }) {
+function EmptyState({
+  workspaceId,
+  filter,
+}: {
+  workspaceId: string | undefined;
+  filter: Filter;
+}) {
   return (
     <div className="panel flex flex-col items-center px-6 py-14 text-center">
       <h3 className="font-display text-base font-semibold">

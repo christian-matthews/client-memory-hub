@@ -34,9 +34,15 @@ export interface StructuredSummary {
   daysWithoutMovement: number | null;
 }
 
+/** Full topic row as returned by topicRowFields. */
+export interface TopicRow extends AttentionTopicInput {
+  client_id: string;
+  current_state: string;
+}
+
 export interface ClientBrief {
   client: Awaited<ReturnType<typeof selectClient>>;
-  topics: AttentionTopicInput[];
+  topics: TopicRow[];
   commitments: AttentionCommitmentInput[];
   attention: AttentionReason[];
   requiresAttention: boolean;
@@ -77,7 +83,7 @@ export async function getClientBrief(ctx: DomainContext, raw: unknown): Promise<
   if (topicsRes.error) throw new DomainError("internal", topicsRes.error.message);
   if (commitmentsRes.error) throw new DomainError("internal", commitmentsRes.error.message);
 
-  const topics = (topicsRes.data ?? []) as unknown as AttentionTopicInput[];
+  const topics = (topicsRes.data ?? []) as unknown as TopicRow[];
   const commitments = (commitmentsRes.data ?? []) as unknown as AttentionCommitmentInput[];
 
   const attention = evaluateAttention({ topics, commitments });
@@ -185,7 +191,7 @@ export async function getAttentionItems(
   if (topicsRes.error) throw new DomainError("internal", topicsRes.error.message);
   if (commitmentsRes.error) throw new DomainError("internal", commitmentsRes.error.message);
 
-  const allTopics = (topicsRes.data ?? []) as unknown as Array<AttentionTopicInput & { client_id: string }>;
+  const allTopics = (topicsRes.data ?? []) as unknown as TopicRow[];
   const allCommitments = (commitmentsRes.data ?? []) as unknown as Array<
     AttentionCommitmentInput & { client_id: string }
   >;

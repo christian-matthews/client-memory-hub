@@ -325,7 +325,8 @@ BEGIN
   r := domain_write_as_integration(f.i_rw::uuid,'create_client',
         jsonb_build_object('name','Desde MCP','workspaceId',f.ws_b),'h','k-mcp');
   SELECT count(*) INTO n FROM clients WHERE id=(r->>'clientId')::uuid AND workspace_id=f.ws_a::uuid;
-  IF n <> 1 THEN RAISE EXCEPTION 'FALLA: el workspace no vino del token'; END IF;
+  IF n <> 1 THEN RAISE EXCEPTION 'FALLA: el workspace no vino del token (r=%, ws=%)', r,
+      (SELECT workspace_id FROM clients WHERE id=(r->>'clientId')::uuid); END IF;
   IF NOT EXISTS (SELECT 1 FROM activity_events WHERE workspace_id=f.ws_a::uuid
                  AND entity_id=(r->>'clientId')::uuid AND actor_type='integration' AND actor_user_id IS NULL) THEN
     RAISE EXCEPTION 'FALLA: auditoría de integración incorrecta';

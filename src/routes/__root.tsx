@@ -85,13 +85,17 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
         content:
           "Memoria operativa por cliente: temas abiertos, decisiones, compromisos y evidencia siempre al día.",
       },
-      { property: "og:title", content: "Client Memory" },
+      { property: "og:title", content: "Client Memory — Memoria operativa por cliente" },
       {
         property: "og:description",
-        content: "Sistema de memoria operativa por cliente, listo para agentes de IA.",
+        content: "Memoria operativa por cliente: temas abiertos, decisiones, compromisos y evidencia siempre al día.",
       },
       { property: "og:type", content: "website" },
       { name: "twitter:card", content: "summary_large_image" },
+      { name: "twitter:title", content: "Client Memory — Memoria operativa por cliente" },
+      { name: "twitter:description", content: "Memoria operativa por cliente: temas abiertos, decisiones, compromisos y evidencia siempre al día." },
+      { property: "og:image", content: "https://pub-bb2e103a32db4e198524a2e9ed8f35b4.r2.dev/e045e9eda63112a0da2eee63287a2e7a/id-preview-e98fb747--aa895b06-1eba-492a-95f8-922f696f5d8e.lovable.app-1786246728462.png" },
+      { name: "twitter:image", content: "https://pub-bb2e103a32db4e198524a2e9ed8f35b4.r2.dev/e045e9eda63112a0da2eee63287a2e7a/id-preview-e98fb747--aa895b06-1eba-492a-95f8-922f696f5d8e.lovable.app-1786246728462.png" },
     ],
     links: [
       { rel: "stylesheet", href: appCss },

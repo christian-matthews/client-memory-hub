@@ -2,7 +2,6 @@ import { z } from "zod";
 import { assertWritable, type DomainContext } from "../shared/context";
 import { DomainError, notFound } from "../shared/errors";
 import { recordActivity } from "../shared/audit";
-import { idempotent } from "../shared/idempotency";
 import { idempotencyKeySchema, sourceTypeSchema, uuidSchema } from "../shared/vocabulary";
 
 export const sourceRowFields =
@@ -129,4 +128,9 @@ async function hashContent(text: string): Promise<string> {
     .join("");
 }
 
-export const createSource = idempotent("create_source", createSourceImpl);
+/**
+ * Not part of the transactional idempotent set: deduplication is intrinsic
+ * (content hash + provider/external id), so `idempotencyKey` is recorded in the
+ * audit trail as a cross-reference only.
+ */
+export const createSource = createSourceImpl;

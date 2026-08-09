@@ -42,25 +42,10 @@ export async function recordActivity(ctx: DomainContext, event: AuditEvent): Pro
 }
 
 /**
- * Idempotency guard for actions reachable from integrations. If the key was
- * already used in this workspace, the previous audit row is returned so the
- * caller can respond with the original effect instead of duplicating work.
+ * NOTE: idempotency lives in `public.idempotency_keys` (see
+ * ../shared/idempotency.ts). The audit trail keeps the key only as a
+ * cross-reference, never as the deduplication mechanism.
  */
-export async function findReplay(
-  ctx: DomainContext,
-  idempotencyKey: string | undefined | null,
-): Promise<{ entityId: string | null; eventType: string } | null> {
-  if (!idempotencyKey) return null;
-  const { data, error } = await ctx.db
-    .from("activity_events")
-    .select("entity_id, event_type")
-    .eq("workspace_id", ctx.workspaceId)
-    .eq("idempotency_key", idempotencyKey)
-    .maybeSingle();
-  if (error) throw new DomainError("internal", error.message);
-  if (!data) return null;
-  return { entityId: data.entity_id, eventType: data.event_type };
-}
 
 export function actorLabel(ctx: DomainContext): string {
   if (ctx.actor.name) return ctx.actor.name;

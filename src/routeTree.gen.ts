@@ -17,6 +17,7 @@ import { Route as AuthenticatedDashboardRouteImport } from './routes/_authentica
 import { Route as AuthenticatedSettingsRouteImport } from './routes/_authenticated/settings'
 import { Route as AuthenticatedClientsClientIdRouteImport } from './routes/_authenticated/clients.$clientId'
 import { Route as AuthenticatedTopicsTopicIdRouteImport } from './routes/_authenticated/topics.$topicId'
+import { Route as ApiPublicMcpRouteImport } from './routes/api/public/mcp'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
@@ -60,6 +61,11 @@ const AuthenticatedTopicsTopicIdRoute =
     path: '/topics/$topicId',
     getParentRoute: () => AuthenticatedRouteRoute,
   } as any)
+const ApiPublicMcpRoute = ApiPublicMcpRouteImport.update({
+  id: '/api/public/mcp',
+  path: '/api/public/mcp',
+  getParentRoute: () => rootRouteImport,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
@@ -69,6 +75,7 @@ export interface FileRoutesByFullPath {
   '/settings': typeof AuthenticatedSettingsRoute
   '/clients/$clientId': typeof AuthenticatedClientsClientIdRoute
   '/topics/$topicId': typeof AuthenticatedTopicsTopicIdRoute
+  '/api/public/mcp': typeof ApiPublicMcpRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
@@ -78,6 +85,7 @@ export interface FileRoutesByTo {
   '/settings': typeof AuthenticatedSettingsRoute
   '/clients/$clientId': typeof AuthenticatedClientsClientIdRoute
   '/topics/$topicId': typeof AuthenticatedTopicsTopicIdRoute
+  '/api/public/mcp': typeof ApiPublicMcpRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -89,6 +97,7 @@ export interface FileRoutesById {
   '/_authenticated/settings': typeof AuthenticatedSettingsRoute
   '/_authenticated/clients/$clientId': typeof AuthenticatedClientsClientIdRoute
   '/_authenticated/topics/$topicId': typeof AuthenticatedTopicsTopicIdRoute
+  '/api/public/mcp': typeof ApiPublicMcpRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -100,6 +109,7 @@ export interface FileRouteTypes {
     | '/settings'
     | '/clients/$clientId'
     | '/topics/$topicId'
+    | '/api/public/mcp'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
@@ -109,6 +119,7 @@ export interface FileRouteTypes {
     | '/settings'
     | '/clients/$clientId'
     | '/topics/$topicId'
+    | '/api/public/mcp'
   id:
     | '__root__'
     | '/'
@@ -119,12 +130,14 @@ export interface FileRouteTypes {
     | '/_authenticated/settings'
     | '/_authenticated/clients/$clientId'
     | '/_authenticated/topics/$topicId'
+    | '/api/public/mcp'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   AuthenticatedRouteRoute: typeof AuthenticatedRouteRouteWithChildren
   AuthRoute: typeof AuthRoute
+  ApiPublicMcpRoute: typeof ApiPublicMcpRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -185,6 +198,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedTopicsTopicIdRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
+    '/api/public/mcp': {
+      id: '/api/public/mcp'
+      path: '/api/public/mcp'
+      fullPath: '/api/public/mcp'
+      preLoaderRoute: typeof ApiPublicMcpRouteImport
+      parentRoute: typeof rootRouteImport
+    }
   }
 }
 
@@ -211,6 +231,7 @@ const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   AuthenticatedRouteRoute: AuthenticatedRouteRouteWithChildren,
   AuthRoute: AuthRoute,
+  ApiPublicMcpRoute: ApiPublicMcpRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

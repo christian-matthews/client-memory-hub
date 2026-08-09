@@ -1,6 +1,7 @@
 import { z } from "zod";
-import type { DomainContext } from "../shared/context";
-import { DomainError } from "../shared/errors";
+import { assertAdmin, assertWritable, type DomainContext } from "../shared/context";
+import { DomainError, notFound } from "../shared/errors";
+import { recordActivity } from "../shared/audit";
 
 /**
  * Provider-agnostic AI contract. The domain never talks to a vendor SDK; it
@@ -97,6 +98,29 @@ export async function startAiRun(
     .select("id")
     .single();
   if (error) throw new DomainError("internal", error.message);
+
+  const sourceIds = params.sourceIds ?? [];
+  if (sourceIds.length > 0) {
+    // Sources must belong to the same workspace; the composite FK on
+    // ai_run_sources enforces it, this check reports it cleanly.
+    const { data: valid, error: sourceError } = await ctx.db
+      .from("sources")
+      .select("id")
+      .eq("workspace_id", ctx.workspaceId)
+      .in("id", sourceIds);
+    if (sourceError) throw new DomainError("internal", sourceError.message);
+    if ((valid ?? []).length !== sourceIds.length) {
+      throw new DomainError("invalid_input", "Alguna fuente no pertenece a este espacio de trabajo");
+    }
+    const { error: linkError } = await ctx.db.from("ai_run_sources").insert(
+      sourceIds.map((sourceId) => ({
+        workspace_id: ctx.workspaceId,
+        ai_run_id: data.id,
+        source_id: sourceId,
+      })),
+    );
+    if (linkError) throw new DomainError("internal", linkError.message);
+  }
   return data.id;
 }
 
@@ -106,12 +130,20 @@ export const reviewProposalInput = z.object({
 });
 
 /**
- * Human review of an AI proposal. Approval records the decision; applying the
- * change still goes through the normal domain actions so validation, RLS and
- * audit are identical to a human edit. AI never overwrites human state silently.
+ * Human review of an AI proposal.
+ *
+ * Roles: only `owner` and `admin` may approve or reject. Read-only
+ * integrations (writeEnabled = false) may never review.
+ *
+ * Approving does NOT apply anything: `approved` and `applied` are distinct
+ * states. Applying is a separate, explicit step that goes through the normal
+ * domain actions, so validation, RLS and audit are identical to a human edit.
  */
 export async function reviewAiProposal(ctx: DomainContext, raw: unknown) {
+  assertWritable(ctx);
+  assertAdmin(ctx);
   const input = reviewProposalInput.parse(raw);
+
   const { data, error } = await ctx.db
     .from("ai_proposals")
     .update({
@@ -122,10 +154,87 @@ export async function reviewAiProposal(ctx: DomainContext, raw: unknown) {
     .eq("workspace_id", ctx.workspaceId)
     .eq("id", input.proposalId)
     .eq("status", "pending")
-    .select("id, status, proposal_type")
-    .single();
+    .select("id, status, proposal_type, client_id, topic_id")
+    .maybeSingle();
   if (error) throw new DomainError("internal", error.message);
-  return { proposal: data };
+  if (!data) throw notFound("Propuesta no encontrada, ya revisada o de otro espacio de trabajo");
+
+  await recordActivity(ctx, {
+    eventType: `ai_proposal.${input.decision}`,
+    entityType: "ai_proposal",
+    entityId: data.id,
+    clientId: data.client_id,
+    topicId: data.topic_id,
+    description: `Propuesta de IA ${input.decision === "approved" ? "aprobada" : "rechazada"} (${data.proposal_type})`,
+  });
+  return { proposal: data, applied: false };
+}
+
+export const applyProposalInput = z.object({ proposalId: z.string().uuid() });
+
+/**
+ * Applies an already-approved proposal through domain actions. Never called
+ * implicitly by approval. `proposal_type` decides which domain action runs;
+ * unknown types are rejected instead of being guessed.
+ */
+export async function applyAiProposal(
+  ctx: DomainContext,
+  raw: unknown,
+  actions: {
+    addTopicUpdate: (ctx: DomainContext, payload: unknown) => Promise<unknown>;
+    setTopicNextStep: (ctx: DomainContext, payload: unknown) => Promise<unknown>;
+  },
+) {
+  assertWritable(ctx);
+  assertAdmin(ctx);
+  const input = applyProposalInput.parse(raw);
+
+  const { data: proposal, error } = await ctx.db
+    .from("ai_proposals")
+    .select("id, status, proposal_type, proposed_changes, client_id, topic_id")
+    .eq("workspace_id", ctx.workspaceId)
+    .eq("id", input.proposalId)
+    .maybeSingle();
+  if (error) throw new DomainError("internal", error.message);
+  if (!proposal) throw notFound("Propuesta no encontrada en este espacio de trabajo");
+  if (proposal.status !== "approved") {
+    throw new DomainError("invalid_input", "Solo una propuesta aprobada puede aplicarse");
+  }
+
+  const changes = (proposal.proposed_changes ?? {}) as Record<string, unknown>;
+  let outcome: unknown;
+  switch (proposal.proposal_type) {
+    case "topic_update":
+      outcome = await actions.addTopicUpdate(ctx, changes);
+      break;
+    case "topic_next_step":
+      outcome = await actions.setTopicNextStep(ctx, changes);
+      break;
+    default:
+      throw new DomainError(
+        "invalid_input",
+        `Tipo de propuesta no soportado para aplicación automática: ${proposal.proposal_type}`,
+      );
+  }
+
+  const { error: markError } = await ctx.db
+    .from("ai_proposals")
+    .update({ status: "applied", applied_at: new Date().toISOString() })
+    .eq("workspace_id", ctx.workspaceId)
+    .eq("id", proposal.id)
+    .eq("status", "approved");
+  if (markError) throw new DomainError("internal", markError.message);
+
+  await recordActivity(ctx, {
+    eventType: "ai_proposal.applied",
+    entityType: "ai_proposal",
+    entityId: proposal.id,
+    clientId: proposal.client_id,
+    topicId: proposal.topic_id,
+    description: `Propuesta de IA aplicada mediante acciones del dominio (${proposal.proposal_type})`,
+    metadata: { proposalType: proposal.proposal_type },
+  });
+  return { proposalId: proposal.id, status: "applied" as const, outcome };
 }
 
 export function aiProviderStatus(): { configured: boolean; provider: string } {

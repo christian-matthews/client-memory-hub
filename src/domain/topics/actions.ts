@@ -1,7 +1,8 @@
 import { z } from "zod";
 import { assertWritable, type DomainContext } from "../shared/context";
 import { DomainError, notFound } from "../shared/errors";
-import { findReplay, recordActivity } from "../shared/audit";
+import { recordActivity } from "../shared/audit";
+import { compact, hashPayload, idempotent } from "../shared/idempotency";
 import {
   idempotencyKeySchema,
   partySchema,
@@ -43,12 +44,9 @@ export const createTopicInput = z.object({
   idempotencyKey: idempotencyKeySchema,
 });
 
-export async function createTopic(ctx: DomainContext, raw: unknown) {
+async function createTopicImpl(ctx: DomainContext, raw: unknown) {
   assertWritable(ctx);
   const input = createTopicInput.parse(raw);
-
-  const replay = await findReplay(ctx, input.idempotencyKey);
-  if (replay?.entityId) return { topic: await fetchTopic(ctx, replay.entityId), replayed: true };
 
   const { data: client, error: clientError } = await ctx.db
     .from("clients")
@@ -161,13 +159,10 @@ export const setTopicNextStepInput = z.object({
   idempotencyKey: idempotencyKeySchema,
 });
 
-export async function setTopicNextStep(ctx: DomainContext, raw: unknown) {
+async function setTopicNextStepImpl(ctx: DomainContext, raw: unknown) {
   assertWritable(ctx);
   const input = setTopicNextStepInput.parse(raw);
   const topic = await fetchTopic(ctx, input.topicId);
-
-  const replay = await findReplay(ctx, input.idempotencyKey);
-  if (replay) return { topic: await fetchTopic(ctx, input.topicId), replayed: true };
 
   const now = new Date().toISOString();
   const { data, error } = await ctx.db
@@ -230,124 +225,67 @@ export const addTopicUpdateInput = z.object({
 export async function addTopicUpdate(ctx: DomainContext, raw: unknown) {
   assertWritable(ctx);
   const input = addTopicUpdateInput.parse(raw);
-  const topic = await fetchTopic(ctx, input.topicId);
 
-  const replay = await findReplay(ctx, input.idempotencyKey);
-  if (replay?.entityId) {
-    return { updateId: replay.entityId, topic, replayed: true, effects: ["replay"] };
+  // Single PostgreSQL transaction: update + topic patch + decision +
+  // commitment + source link + client activity + audit. All or nothing.
+  // Idempotency is reserved inside that same transaction.
+  const { data, error } = await ctx.db.rpc("add_topic_update_tx", compact({
+    p_workspace_id: ctx.workspaceId,
+    p_topic_id: input.topicId,
+    p_content: input.content,
+    p_update_type: input.updateType,
+    p_is_relevant: input.isRelevant,
+    p_status: input.status ?? undefined,
+    p_ball_with: input.ballWith ?? undefined,
+    p_current_state: input.currentState ?? undefined,
+    p_next_step_set: input.nextStep !== undefined,
+    p_next_step: input.nextStep ?? undefined,
+    p_next_step_owner: input.nextStepOwner ?? "nobody",
+    p_next_step_due_at: input.nextStepDueAt ?? undefined,
+    p_decision: input.decision ?? undefined,
+    p_commitment: input.commitment
+      ? (JSON.parse(JSON.stringify(input.commitment)) as never)
+      : undefined,
+    p_source_id: input.sourceId ?? undefined,
+    p_actor_type: ctx.actor.type,
+    p_actor_user_id: ctx.actor.userId ?? undefined,
+    p_actor_name: ctx.actor.name ?? undefined,
+    p_actor_channel: ctx.actor.channel ?? undefined,
+    p_correlation_id: ctx.correlationId,
+    p_idempotency_key: input.idempotencyKey ?? undefined,
+    p_request_hash: await hashPayload(input),
+  }));
+
+  if (error) {
+    const message = error.message ?? "";
+    if (message.includes("idempotency_conflict")) {
+      throw new DomainError(
+        "conflict",
+        "La clave de idempotencia ya se usó con un contenido diferente",
+      );
+    }
+    if (message.includes("topic_not_found")) {
+      throw notFound("Tema no encontrado en este espacio de trabajo");
+    }
+    if (message.includes("forbidden_workspace")) throw new DomainError("forbidden", "Sin acceso al espacio de trabajo");
+    throw new DomainError("internal", message);
   }
 
-  const now = new Date().toISOString();
-  const effects: string[] = [];
-
-  const { data: update, error: updateError } = await ctx.db
-    .from("topic_updates")
-    .insert({
-      workspace_id: ctx.workspaceId,
-      client_id: topic.client_id,
-      topic_id: topic.id,
-      update_type: input.updateType,
-      content: input.content,
-      is_relevant: input.isRelevant,
-      created_by: ctx.actor.userId ?? null,
-    })
-    .select("id, created_at")
-    .single();
-  if (updateError) throw new DomainError("internal", updateError.message);
-  effects.push("actualización registrada");
-
-  const topicPatch: Record<string, unknown> = {};
-  if (input.isRelevant) topicPatch['last_relevant_change_at'] = now;
-  if (input.status && input.status !== topic.status) {
-    topicPatch['status'] = input.status;
-    if (input.status === "resolved") topicPatch['resolved_at'] = now;
-    if (input.status === "archived") topicPatch['archived_at'] = now;
-    effects.push(`estado → ${TOPIC_STATUS_LABEL[input.status]}`);
-  }
-  if (input.ballWith && input.ballWith !== topic.ball_with) {
-    topicPatch['ball_with'] = input.ballWith;
-    effects.push(`pelota → ${PARTY_LABEL[input.ballWith]}`);
-  }
-  if (input.currentState !== undefined) {
-    topicPatch['current_state'] = input.currentState;
-    effects.push("estado actual actualizado");
-  }
-  if (input.nextStep !== undefined) {
-    topicPatch['next_step'] = input.nextStep;
-    topicPatch['next_step_owner'] = input.nextStepOwner ?? "nobody";
-    topicPatch['next_step_due_at'] = input.nextStepDueAt ?? null;
-    effects.push("próximo paso actualizado");
-  }
-
-  if (Object.keys(topicPatch).length > 0) {
-    const { error } = await ctx.db
-      .from("topics")
-      .update(topicPatch as never)
-      .eq("workspace_id", ctx.workspaceId)
-      .eq("id", topic.id);
-    if (error) throw new DomainError("internal", error.message);
-  }
-
-  if (input.decision) {
-    const { error } = await ctx.db.from("decisions").insert({
-      workspace_id: ctx.workspaceId,
-      client_id: topic.client_id,
-      topic_id: topic.id,
-      description: input.decision,
-      source_id: input.sourceId ?? null,
-      created_by: ctx.actor.userId ?? null,
-    });
-    if (error) throw new DomainError("internal", error.message);
-    effects.push("decisión registrada");
-  }
-
-  if (input.commitment) {
-    const { error } = await ctx.db.from("commitments").insert({
-      workspace_id: ctx.workspaceId,
-      client_id: topic.client_id,
-      topic_id: topic.id,
-      description: input.commitment.description,
-      responsible_party: input.commitment.responsibleParty,
-      responsible_name: input.commitment.responsibleName ?? null,
-      due_at: input.commitment.dueAt ?? null,
-    });
-    if (error) throw new DomainError("internal", error.message);
-    effects.push("compromiso creado");
-  }
-
-  if (input.sourceId) {
-    const { error } = await ctx.db.from("topic_sources").upsert(
-      {
-        workspace_id: ctx.workspaceId,
-        topic_id: topic.id,
-        source_id: input.sourceId,
-        linked_by: ctx.actor.userId ?? null,
-      },
-      { onConflict: "topic_id,source_id", ignoreDuplicates: true },
-    );
-    if (error) throw new DomainError("internal", error.message);
-    effects.push("fuente vinculada");
-  }
-
-  if (input.isRelevant) await touchClientActivity(ctx, topic.client_id, now);
-
-  await recordActivity(ctx, {
-    eventType: "topic.update_added",
-    entityType: "topic_update",
-    entityId: update.id,
-    clientId: topic.client_id,
-    topicId: topic.id,
-    description: `Actualización en “${topic.title}”: ${effects.join(", ")}`,
-    inputSummary: input.content.slice(0, 200),
-    metadata: { effects },
-    idempotencyKey: input.idempotencyKey ?? null,
-  });
+  const result = (data ?? {}) as {
+    updateId: string;
+    effects?: string[];
+    replayed?: boolean;
+    decisionId?: string | null;
+    commitmentId?: string | null;
+  };
 
   return {
-    updateId: update.id,
-    topic: await fetchTopic(ctx, topic.id),
-    effects,
-    replayed: false,
+    updateId: result.updateId,
+    topic: await fetchTopic(ctx, input.topicId),
+    effects: result.effects ?? [],
+    decisionId: result.decisionId ?? null,
+    commitmentId: result.commitmentId ?? null,
+    replayed: result.replayed ?? false,
   };
 }
 
@@ -359,13 +297,10 @@ export const recordDecisionInput = z.object({
   idempotencyKey: idempotencyKeySchema,
 });
 
-export async function recordDecision(ctx: DomainContext, raw: unknown) {
+async function recordDecisionImpl(ctx: DomainContext, raw: unknown) {
   assertWritable(ctx);
   const input = recordDecisionInput.parse(raw);
   const topic = await fetchTopic(ctx, input.topicId);
-
-  const replay = await findReplay(ctx, input.idempotencyKey);
-  if (replay?.entityId) return { decisionId: replay.entityId, replayed: true };
 
   const { data, error } = await ctx.db
     .from("decisions")
@@ -407,3 +342,7 @@ export async function touchClientActivity(
     .eq("id", clientId);
   if (error) throw new DomainError("internal", error.message);
 }
+
+export const createTopic = idempotent("create_topic", createTopicImpl);
+export const setTopicNextStep = idempotent("set_topic_next_step", setTopicNextStepImpl);
+export const recordDecision = idempotent("record_decision", recordDecisionImpl);

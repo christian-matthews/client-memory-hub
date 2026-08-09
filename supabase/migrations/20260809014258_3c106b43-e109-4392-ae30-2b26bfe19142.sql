@@ -1,0 +1,1 @@
+REVOKE ALL ON FUNCTION public.enforce_membership_rules() FROM PUBLIC, anon, authenticated;

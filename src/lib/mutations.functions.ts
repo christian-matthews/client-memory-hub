@@ -22,50 +22,131 @@ import {
   cancelCommitment as cancelCommitmentAction,
 } from "@/domain/commitments/actions";
 import { createSource as createSourceAction, linkSourceToTopic } from "@/domain/sources/actions";
-import { reviewAiProposal } from "@/domain/ai/provider";
+import { reviewAiProposal, applyAiProposal } from "@/domain/ai/provider";
+import { createIntegration, revokeIntegration } from "@/domain/integrations/actions";
 
 type Json = string | number | boolean | null | Json[] | { [key: string]: Json };
+
+const mutationInput = z.object({
+  workspaceId: z.union([z.string().uuid(), z.undefined()]),
+  payload: z.unknown(),
+});
 
 /**
  * Every mutation goes through the same shape: verified bearer token -> domain
  * context (workspace membership + role) -> pure domain action -> audit trail.
+ *
+ * NOTE: each `createServerFn` below is declared at module scope on purpose.
+ * Wrapping the declaration in a factory prevents the build from extracting the
+ * handler, and it would then execute in the browser without a server context.
  */
-function mutation(action: (ctx: DomainContext, raw: unknown) => Promise<unknown>) {
-  return createServerFn({ method: "POST" })
-    .middleware([requireSupabaseAuth])
-    .inputValidator((input: unknown) =>
-      z
-        .object({
-          workspaceId: z.union([z.string().uuid(), z.undefined()]),
-          payload: z.unknown(),
-        })
-        .parse(input),
-    )
-    .handler(async ({ context, data }) =>
-      run(async () => {
-        const ctx = await domainCtx(context, data.workspaceId);
-        return (await action(ctx, data.payload)) as Json;
-      }),
-    );
+function runMutation(
+  action: (ctx: DomainContext, raw: unknown) => Promise<unknown>,
+  context: { supabase: unknown; userId: string; claims?: Record<string, unknown> },
+  data: { workspaceId?: string | undefined; payload?: unknown },
+) {
+  return run(async () => {
+    const ctx = await domainCtx(context, data.workspaceId);
+    return (await action(ctx, data.payload)) as Json;
+  });
 }
 
+export const createClientFn = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((input: unknown) => mutationInput.parse(input))
+  .handler(async ({ context, data }) => runMutation(createClientAction, context, data));
 
-export const createClientFn = mutation(createClientAction);
-export const updateClientFn = mutation(updateClientAction);
-export const archiveClientFn = mutation(archiveClientAction);
-export const addClientContactFn = mutation(addClientContactAction);
+export const updateClientFn = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((input: unknown) => mutationInput.parse(input))
+  .handler(async ({ context, data }) => runMutation(updateClientAction, context, data));
 
-export const createTopicFn = mutation(createTopicAction);
-export const updateTopicStateFn = mutation(updateTopicStateAction);
-export const setTopicNextStepFn = mutation(setTopicNextStepAction);
-export const addTopicUpdateFn = mutation(addTopicUpdateAction);
-export const recordDecisionFn = mutation(recordDecisionAction);
+export const archiveClientFn = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((input: unknown) => mutationInput.parse(input))
+  .handler(async ({ context, data }) => runMutation(archiveClientAction, context, data));
 
-export const createCommitmentFn = mutation(createCommitmentAction);
-export const completeCommitmentFn = mutation(completeCommitmentAction);
-export const cancelCommitmentFn = mutation(cancelCommitmentAction);
+export const addClientContactFn = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((input: unknown) => mutationInput.parse(input))
+  .handler(async ({ context, data }) => runMutation(addClientContactAction, context, data));
 
-export const createSourceFn = mutation(createSourceAction);
-export const linkSourceFn = mutation(linkSourceToTopic);
+export const createTopicFn = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((input: unknown) => mutationInput.parse(input))
+  .handler(async ({ context, data }) => runMutation(createTopicAction, context, data));
 
-export const reviewProposalFn = mutation(reviewAiProposal);
+export const updateTopicStateFn = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((input: unknown) => mutationInput.parse(input))
+  .handler(async ({ context, data }) => runMutation(updateTopicStateAction, context, data));
+
+export const setTopicNextStepFn = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((input: unknown) => mutationInput.parse(input))
+  .handler(async ({ context, data }) => runMutation(setTopicNextStepAction, context, data));
+
+export const addTopicUpdateFn = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((input: unknown) => mutationInput.parse(input))
+  .handler(async ({ context, data }) => runMutation(addTopicUpdateAction, context, data));
+
+export const recordDecisionFn = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((input: unknown) => mutationInput.parse(input))
+  .handler(async ({ context, data }) => runMutation(recordDecisionAction, context, data));
+
+export const createCommitmentFn = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((input: unknown) => mutationInput.parse(input))
+  .handler(async ({ context, data }) => runMutation(createCommitmentAction, context, data));
+
+export const completeCommitmentFn = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((input: unknown) => mutationInput.parse(input))
+  .handler(async ({ context, data }) => runMutation(completeCommitmentAction, context, data));
+
+export const cancelCommitmentFn = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((input: unknown) => mutationInput.parse(input))
+  .handler(async ({ context, data }) => runMutation(cancelCommitmentAction, context, data));
+
+export const createSourceFn = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((input: unknown) => mutationInput.parse(input))
+  .handler(async ({ context, data }) => runMutation(createSourceAction, context, data));
+
+export const linkSourceFn = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((input: unknown) => mutationInput.parse(input))
+  .handler(async ({ context, data }) => runMutation(linkSourceToTopic, context, data));
+
+export const reviewProposalFn = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((input: unknown) => mutationInput.parse(input))
+  .handler(async ({ context, data }) => runMutation(reviewAiProposal, context, data));
+
+export const applyProposalFn = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((input: unknown) => mutationInput.parse(input))
+  .handler(async ({ context, data }) =>
+    runMutation(
+      (ctx, raw) =>
+        applyAiProposal(ctx, raw, {
+          addTopicUpdate: addTopicUpdateAction,
+          setTopicNextStep: setTopicNextStepAction,
+        }),
+      context,
+      data,
+    ),
+  );
+
+export const createIntegrationFn = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((input: unknown) => mutationInput.parse(input))
+  .handler(async ({ context, data }) => runMutation(createIntegration, context, data));
+
+export const revokeIntegrationFn = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((input: unknown) => mutationInput.parse(input))
+  .handler(async ({ context, data }) => runMutation(revokeIntegration, context, data));

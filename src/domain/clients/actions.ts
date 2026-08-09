@@ -1,7 +1,8 @@
 import { z } from "zod";
 import { assertWritable, type DomainContext } from "../shared/context";
 import { DomainError, notFound } from "../shared/errors";
-import { findReplay, recordActivity } from "../shared/audit";
+import { recordActivity } from "../shared/audit";
+import { idempotent } from "../shared/idempotency";
 import {
   clientHealthSchema,
   relationshipStatusSchema,
@@ -43,14 +44,9 @@ async function fetchClient(ctx: DomainContext, clientId: string) {
   return data;
 }
 
-export async function createClient(ctx: DomainContext, raw: unknown) {
+async function createClientImpl(ctx: DomainContext, raw: unknown) {
   assertWritable(ctx);
   const input = createClientInput.parse(raw);
-
-  const replay = await findReplay(ctx, input.idempotencyKey);
-  if (replay?.entityId) {
-    return { client: await fetchClient(ctx, replay.entityId), replayed: true };
-  }
 
   const { data, error } = await ctx.db
     .from("clients")
@@ -177,3 +173,5 @@ export async function addClientContact(ctx: DomainContext, raw: unknown) {
   });
   return { contact: data };
 }
+
+export const createClient = idempotent("create_client", createClientImpl);

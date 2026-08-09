@@ -24,7 +24,7 @@ export function useActiveWorkspace() {
 
   const query = useQuery({
     queryKey: ["workspaces"],
-    queryFn: async () => unwrap(await call({ data: {} })),
+    queryFn: async () => unwrap(await call()),
   });
 
   const choose = useCallback((id: string) => {
@@ -41,8 +41,14 @@ export function useActiveWorkspace() {
 
 /** Wraps a mutation server fn with toasts + cache invalidation. */
 export function useDomainMutation<TInput>(
-  fn: (opts: { data: { workspaceId?: string; payload: TInput } }) => Promise<Result<unknown>>,
-  options: { workspaceId?: string; successMessage: string; invalidate?: string[][] },
+  fn: (opts: {
+    data: { workspaceId?: string | undefined; payload: TInput };
+  }) => Promise<Result<unknown>>,
+  options: {
+    workspaceId?: string | undefined;
+    successMessage: string;
+    invalidate?: string[][];
+  },
 ) {
   const queryClient = useQueryClient();
   return useMutation({

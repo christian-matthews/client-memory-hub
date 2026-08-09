@@ -159,9 +159,13 @@ export async function handleMcpMessage(
     });
   } catch (error) {
     const normalized = normalizeError(error);
+    // Internal failures are logged server-side; the agent gets no internals.
+    if (normalized.code === "internal") console.error("[mcp]", tool.name, error);
+    const message =
+      normalized.code === "internal" ? "Error interno al ejecutar la herramienta" : normalized.message;
     await auditCall(ctx, tool.name, integration.id, "error", normalized.code);
     return ok(id, {
-      content: [{ type: "text", text: `${normalized.code}: ${normalized.message}` }],
+      content: [{ type: "text", text: `${normalized.code}: ${message}` }],
       isError: true,
     });
   }

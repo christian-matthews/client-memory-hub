@@ -14,38 +14,46 @@ export interface AuditEvent {
 }
 
 /**
- * Append-only audit trail. Called by every write action, human or automated.
- * Never receives secrets: callers pass summarized inputs only.
+ * Append-only audit trail.
+ *
+ * The browser has NO insert privilege on `activity_events`; every event is
+ * written through `record_activity_v1`, a SECURITY DEFINER function that:
+ *  - for a signed-in caller forces `actor_type = 'user'` and
+ *    `actor_user_id = auth.uid()`, ignoring anything the caller sends, and
+ *    verifies workspace membership;
+ *  - only accepts `ai` / `integration` / `system` actors from privileged
+ *    (service_role) callers, i.e. the MCP endpoint and server jobs.
+ *
+ * Writes that belong to a domain transaction are audited inside that same
+ * transaction by `domain_write` (see ./write.ts) and never reach this helper.
  */
 export async function recordActivity(ctx: DomainContext, event: AuditEvent): Promise<void> {
-  const { error } = await ctx.db.from("activity_events").insert({
-    workspace_id: ctx.workspaceId,
-    client_id: event.clientId ?? null,
-    topic_id: event.topicId ?? null,
-    actor_type: ctx.actor.type,
-    actor_user_id: ctx.actor.userId ?? null,
-    actor_name: ctx.actor.name ?? null,
-    event_type: event.eventType,
-    entity_type: event.entityType,
-    entity_id: event.entityId ?? null,
-    description: event.description,
-    input_summary: event.inputSummary ?? null,
-    metadata: (event.metadata ?? {}) as never,
-    correlation_id: ctx.correlationId,
-    idempotency_key: event.idempotencyKey ?? null,
+  const { error } = await ctx.db.rpc("record_activity_v1", {
+    p_workspace_id: ctx.workspaceId,
+    p_event: {
+      eventType: event.eventType,
+      entityType: event.entityType,
+      entityId: event.entityId ?? null,
+      description: event.description,
+      clientId: event.clientId ?? null,
+      topicId: event.topicId ?? null,
+      inputSummary: event.inputSummary ?? null,
+      metadata: event.metadata ?? {},
+      idempotencyKey: event.idempotencyKey ?? null,
+    } as never,
+    // Ignored for human callers; used by privileged server/MCP paths.
+    p_actor_type: ctx.actor.type,
+    p_actor_name: ctx.actor.name ?? null,
+    p_correlation_id: ctx.correlationId,
   });
   if (error) {
-    // Unique violation on (workspace_id, idempotency_key) => replay.
-    if (error.code === "23505") throw new DomainError("conflict", "duplicate_idempotency_key");
-    throw new DomainError("internal", `No se pudo registrar la auditoría: ${error.message}`);
+    const message = error.message ?? "";
+    if (message.includes("forbidden_workspace") || message.includes("forbidden_actor")) {
+      throw new DomainError("forbidden", "Auditoría rechazada: actor o espacio de trabajo inválido");
+    }
+    throw new DomainError("internal", `No se pudo registrar la auditoría: ${message}`);
   }
 }
-
-/**
- * NOTE: idempotency lives in `public.idempotency_keys` (see
- * ../shared/idempotency.ts). The audit trail keeps the key only as a
- * cross-reference, never as the deduplication mechanism.
- */
 
 export function actorLabel(ctx: DomainContext): string {
   if (ctx.actor.name) return ctx.actor.name;

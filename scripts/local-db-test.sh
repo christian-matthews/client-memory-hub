@@ -20,7 +20,7 @@ unset PGPASSWORD PGSSLMODE || true
 
 rm -rf "$DATA"; mkdir -p "$DATA"
 "$PGBIN/initdb" -U postgres -D "$DATA" >/dev/null
-"$PGBIN/pg_ctl" -D "$DATA" -o "-p $PORT -c listen_addresses=127.0.0.1" -l /tmp/cm-pg.log start >/dev/null
+"$PGBIN/pg_ctl" -D "$DATA" -o "-p $PORT -c listen_addresses=127.0.0.1 -c unix_socket_directories=/tmp" -l /tmp/cm-pg.log start >/dev/null
 trap '"$PGBIN/pg_ctl" -D "$DATA" -m immediate stop >/dev/null 2>&1 || true' EXIT
 for _ in $(seq 1 30); do "$PGBIN/pg_isready" -q && break; sleep 1; done
 

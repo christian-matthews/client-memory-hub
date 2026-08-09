@@ -27,6 +27,8 @@ export interface DomainContext {
   correlationId: string;
   /** When false, write actions are rejected (read-only MCP integrations). */
   writeEnabled: boolean;
+  /** Set only for MCP integration contexts; binds idempotency keys to the credential. */
+  integrationId?: string | null;
 }
 
 export function assertWritable(ctx: DomainContext): void {

@@ -56,7 +56,7 @@ export async function domainWrite<T extends Record<string, unknown>>(
           p_operation: operation,
           p_payload: cleanPayload as never,
           p_request_hash: requestHash,
-          p_idempotency_key: key,
+          p_idempotency_key: key ?? undefined,
           p_correlation_id: ctx.correlationId,
         })
       : await ctx.db.rpc("domain_write", {
@@ -64,7 +64,7 @@ export async function domainWrite<T extends Record<string, unknown>>(
           p_operation: operation,
           p_payload: cleanPayload as never,
           p_request_hash: requestHash,
-          p_idempotency_key: key,
+          p_idempotency_key: key ?? undefined,
           p_correlation_id: ctx.correlationId,
         });
 

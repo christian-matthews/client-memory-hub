@@ -43,7 +43,7 @@ export async function recordActivity(ctx: DomainContext, event: AuditEvent): Pro
     } as never,
     // Ignored for human callers; used by privileged server/MCP paths.
     p_actor_type: ctx.actor.type,
-    p_actor_name: ctx.actor.name ?? null,
+    p_actor_name: ctx.actor.name ?? undefined,
     p_correlation_id: ctx.correlationId,
   });
   if (error) {

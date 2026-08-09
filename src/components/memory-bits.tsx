@@ -67,11 +67,13 @@ export function AttentionChips({
 const STATUS_TONE: Record<TopicStatus, string> = {
   pending_us: "border-signal-medium/40 bg-signal-medium/10 text-signal-medium",
   waiting_client: "border-signal-low/40 bg-signal-low/10 text-signal-low",
-  in_progress: "border-accent/40 bg-accent/10 text-accent",
+  active: "border-accent/40 bg-accent/10 text-accent",
+  monitoring: "border-border bg-secondary text-secondary-foreground",
   blocked: "border-signal-high/40 bg-signal-high/10 text-signal-high",
   resolved: "border-signal-ok/40 bg-signal-ok/10 text-signal-ok",
   archived: "border-border bg-muted text-muted-foreground",
 };
+
 
 export function TopicStatusBadge({ status }: { status: TopicStatus }) {
   return (

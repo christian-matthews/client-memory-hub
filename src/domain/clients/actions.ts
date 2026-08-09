@@ -2,7 +2,7 @@ import { z } from "zod";
 import { assertWritable, type DomainContext } from "../shared/context";
 import { DomainError, notFound } from "../shared/errors";
 import { recordActivity } from "../shared/audit";
-import { idempotent } from "../shared/idempotency";
+import { domainWrite } from "../shared/write";
 import {
   clientHealthSchema,
   relationshipStatusSchema,
@@ -44,38 +44,24 @@ async function fetchClient(ctx: DomainContext, clientId: string) {
   return data;
 }
 
-async function createClientImpl(ctx: DomainContext, raw: unknown) {
-  assertWritable(ctx);
+/**
+ * One PostgreSQL transaction: idempotency reservation + insert + audit.
+ * The actor is derived server-side; it can never be supplied by the caller.
+ */
+export async function createClient(ctx: DomainContext, raw: unknown) {
   const input = createClientInput.parse(raw);
-
-  const { data, error } = await ctx.db
-    .from("clients")
-    .insert({
-      workspace_id: ctx.workspaceId,
+  const { clientId, replayed } = await domainWrite<{ clientId: string }>(
+    ctx,
+    "create_client",
+    {
       name: input.name,
       description: input.description ?? null,
-      owner_user_id: input.ownerUserId ?? ctx.actor.userId ?? null,
-      current_summary: input.currentSummary ?? null,
-    })
-    .select(clientRowFields)
-    .single();
-
-  if (error) {
-    if (error.code === "23505") throw new DomainError("conflict", "Ya existe un cliente con ese nombre");
-    throw new DomainError("internal", error.message);
-  }
-
-  await recordActivity(ctx, {
-    eventType: "client.created",
-    entityType: "client",
-    entityId: data.id,
-    clientId: data.id,
-    description: `Cliente creado: ${data.name}`,
-    inputSummary: input.name,
-    idempotencyKey: input.idempotencyKey ?? null,
-  });
-
-  return { client: data, replayed: false };
+      ownerUserId: input.ownerUserId ?? null,
+      currentSummary: input.currentSummary ?? null,
+    },
+    input.idempotencyKey ?? null,
+  );
+  return { client: await fetchClient(ctx, clientId), replayed };
 }
 
 export async function updateClient(ctx: DomainContext, raw: unknown) {
@@ -84,12 +70,13 @@ export async function updateClient(ctx: DomainContext, raw: unknown) {
   await fetchClient(ctx, input.clientId);
 
   const patch: Record<string, unknown> = {};
-  if (input.name !== undefined) patch['name'] = input.name;
-  if (input.description !== undefined) patch['description'] = input.description;
-  if (input.currentSummary !== undefined) patch['current_summary'] = input.currentSummary;
-  if (input.health !== undefined) patch['health'] = input.health;
-  if (input.relationshipStatus !== undefined) patch['relationship_status'] = input.relationshipStatus;
-  if (input.ownerUserId !== undefined) patch['owner_user_id'] = input.ownerUserId;
+  if (input.name !== undefined) patch["name"] = input.name;
+  if (input.description !== undefined) patch["description"] = input.description;
+  if (input.currentSummary !== undefined) patch["current_summary"] = input.currentSummary;
+  if (input.health !== undefined) patch["health"] = input.health;
+  if (input.relationshipStatus !== undefined)
+    patch["relationship_status"] = input.relationshipStatus;
+  if (input.ownerUserId !== undefined) patch["owner_user_id"] = input.ownerUserId;
   if (Object.keys(patch).length === 0) return { client: await fetchClient(ctx, input.clientId) };
 
   const { data, error } = await ctx.db
@@ -173,5 +160,3 @@ export async function addClientContact(ctx: DomainContext, raw: unknown) {
   });
   return { contact: data };
 }
-
-export const createClient = idempotent("create_client", createClientImpl);

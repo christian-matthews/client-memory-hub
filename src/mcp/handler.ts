@@ -3,7 +3,7 @@ import { createIntegrationContext } from "@/domain/shared/context";
 import type { Db } from "@/domain/shared/context";
 import { authenticateIntegration } from "@/domain/integrations/actions";
 import { recordActivity } from "@/domain/shared/audit";
-import { normalizeError } from "@/domain/shared/errors";
+import { DomainError, normalizeError } from "@/domain/shared/errors";
 import { findTool, MCP_TOOLS } from "./tools";
 
 /**
@@ -53,16 +53,33 @@ function fail(id: string | number | null, code: number, message: string, data?: 
   return { jsonrpc: "2.0", id, error: data === undefined ? { code, message } : { code, message, data } };
 }
 
-const AUTH_MESSAGE: Record<string, string> = {
-  missing_token: "Falta el token de integración (Authorization: Bearer ...)",
-  invalid_token: "Token de integración inválido",
-  revoked_token: "Token de integración revocado",
-  expired_token: "Token de integración expirado",
-};
+/** Single, uniform message for every authentication failure. */
+const AUTH_MESSAGE = "No autorizado: se requiere un token de integración válido (Authorization: Bearer ...)";
 
 export interface McpHandlerDeps {
   /** Privileged client used ONLY to resolve the credential and run tool queries scoped to its workspace. */
   db: Db;
+  /** Per-request correlation id, echoed in logs and in the audit trail. */
+  correlationId?: string;
+}
+
+/** Per-tool wall clock budget. A stuck tool must not hold the connection open. */
+const TOOL_TIMEOUT_MS = 15_000;
+/** Hard cap on a single tool result to avoid unbounded responses. */
+const MAX_RESULT_BYTES = 256 * 1024;
+
+async function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    return await Promise.race([
+      promise,
+      new Promise<never>((_, reject) => {
+        timer = setTimeout(() => reject(new DomainError("internal", "tool_timeout")), ms);
+      }),
+    ]);
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
 }
 
 /** Handles one JSON-RPC message. Returns null for notifications. */
@@ -90,9 +107,15 @@ export async function handleMcpMessage(
 
   const auth = await authenticateIntegration(deps.db, bearer);
   if (!auth.ok) {
-    return fail(id, JSONRPC_ERROR.unauthorized, AUTH_MESSAGE[auth.reason] ?? "No autorizado", {
+    // Uniform response: an external caller must not be able to tell a
+    // non-existent token from a revoked or expired one. The precise reason is
+    // logged server-side (never the token itself) and the owner can still see
+    // "revocada"/"expirada" in the admin UI.
+    console.warn("[mcp] auth_failed", {
       reason: auth.reason,
+      correlationId: deps.correlationId ?? null,
     });
+    return fail(id, JSONRPC_ERROR.unauthorized, AUTH_MESSAGE);
   }
   const { integration } = auth;
   const canWrite = integration.scopes.includes("write") && integration.writeEnabled;
@@ -145,15 +168,30 @@ export async function handleMcpMessage(
   const ctx = createIntegrationContext({
     db: deps.db,
     workspaceId: integration.workspaceId,
+    integrationId: integration.id,
     integrationName: integration.name,
     writeEnabled: canWrite,
+    ...(deps.correlationId ? { correlationId: deps.correlationId } : {}),
   });
 
   try {
-    const output = await tool.run(ctx, input.data);
+    const output = await withTimeout(tool.run(ctx, input.data), TOOL_TIMEOUT_MS);
+    const text = JSON.stringify(output);
+    if (text.length > MAX_RESULT_BYTES) {
+      await auditCall(ctx, tool.name, integration.id, "error", "response_too_large");
+      return ok(id, {
+        content: [
+          {
+            type: "text",
+            text: "bad_request: el resultado excede el tamaño máximo; acota la consulta o usa paginación",
+          },
+        ],
+        isError: true,
+      });
+    }
     await auditCall(ctx, tool.name, integration.id, "ok", null);
     return ok(id, {
-      content: [{ type: "text", text: JSON.stringify(output) }],
+      content: [{ type: "text", text }],
       structuredContent: output as Record<string, unknown>,
       isError: false,
     });

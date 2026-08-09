@@ -1,13 +1,14 @@
-import { DomainError } from "./errors";
-import type { DomainContext } from "./context";
-
 /**
- * Atomic idempotency for every write action reachable from integrations.
+ * Idempotency helpers.
  *
- * The audit trail (`activity_events`) is NOT used for this: auditing and
- * idempotency have different lifecycles and different failure semantics. The
- * key is reserved in `public.idempotency_keys` through a transactional RPC
- * before the mutation runs, so two concurrent callers cannot both execute.
+ * The reservation itself is NOT done from TypeScript anymore: it happens inside
+ * the same PostgreSQL transaction as the mutation and the audit event, through
+ * `domain_write` / `domain_write_as_integration` (see ./write.ts). The RPCs
+ * `idempotency_reserve` / `idempotency_finish` are internal to the database and
+ * are no longer granted to `authenticated`.
+ *
+ * What remains here is the deterministic request hashing used to detect
+ * "same key, different payload" conflicts.
  */
 
 /** Deterministic JSON so the same logical payload always hashes the same. */
@@ -33,82 +34,4 @@ export function compact<T extends Record<string, unknown>>(
   return Object.fromEntries(
     Object.entries(obj).filter(([, v]) => v !== undefined),
   ) as { [K in keyof T]: Exclude<T[K], undefined> };
-}
-
-interface ReserveResult {
-  state: "skipped" | "reserved" | "completed" | "conflict" | "in_progress";
-  result?: unknown;
-}
-
-/**
- * Reserve -> run -> store. A failure marks the key `failed`, which allows a
- * controlled retry with the same key instead of locking it forever.
- */
-export async function withIdempotency<T extends object>(
-  ctx: DomainContext,
-  params: { operation: string; key: string | null | undefined; payload: unknown },
-  fn: () => Promise<T>,
-): Promise<T> {
-  const key = params.key ?? null;
-  if (!key) return fn();
-
-  const requestHash = await hashPayload(params.payload);
-  const { data, error } = await ctx.db.rpc("idempotency_reserve", {
-    p_workspace_id: ctx.workspaceId,
-    p_key: key,
-    p_operation: params.operation,
-    p_request_hash: requestHash,
-    p_actor_type: ctx.actor.type,
-  });
-  if (error) throw new DomainError("internal", error.message);
-
-  const reserved = (data ?? { state: "reserved" }) as unknown as ReserveResult;
-  if (reserved.state === "conflict") {
-    throw new DomainError(
-      "conflict",
-      "La clave de idempotencia ya se usó con un contenido diferente",
-    );
-  }
-  if (reserved.state === "in_progress") {
-    throw new DomainError("conflict", "Otra solicitud con esta clave está en curso");
-  }
-  if (reserved.state === "completed") {
-    return { ...(reserved.result as T), replayed: true } as T;
-  }
-
-  try {
-    const result = await fn();
-    await ctx.db.rpc("idempotency_finish", {
-      p_workspace_id: ctx.workspaceId,
-      p_key: key,
-      p_ok: true,
-      p_result: JSON.parse(JSON.stringify({ ...result, replayed: true })),
-    });
-    return result as T;
-  } catch (err) {
-    await ctx.db.rpc("idempotency_finish", {
-      p_workspace_id: ctx.workspaceId,
-      p_key: key,
-      p_ok: false,
-      p_result: null,
-      p_error: err instanceof Error ? err.message : String(err),
-    });
-    throw err;
-  }
-}
-
-type Action<T> = (ctx: DomainContext, raw: unknown) => Promise<T>;
-
-/**
- * Wraps a domain action so callers keep the exact same signature while gaining
- * atomic idempotency whenever the payload carries an `idempotencyKey`.
- */
-export function idempotent<T extends object>(operation: string, action: Action<T>): Action<T> {
-  return async (ctx, raw) => {
-    const key =
-      raw && typeof raw === "object" && typeof (raw as { idempotencyKey?: unknown }).idempotencyKey === "string"
-        ? ((raw as { idempotencyKey: string }).idempotencyKey)
-        : null;
-    return withIdempotency(ctx, { operation, key, payload: raw }, () => action(ctx, raw)) as Promise<T>;
-  };
 }

@@ -208,6 +208,42 @@ export type Database = {
           },
         ]
       }
+      ai_run_sources: {
+        Row: {
+          ai_run_id: string
+          created_at: string
+          source_id: string
+          workspace_id: string
+        }
+        Insert: {
+          ai_run_id: string
+          created_at?: string
+          source_id: string
+          workspace_id: string
+        }
+        Update: {
+          ai_run_id?: string
+          created_at?: string
+          source_id?: string
+          workspace_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ai_run_sources_ws_run_fkey"
+            columns: ["workspace_id", "ai_run_id"]
+            isOneToOne: false
+            referencedRelation: "ai_runs"
+            referencedColumns: ["workspace_id", "id"]
+          },
+          {
+            foreignKeyName: "ai_run_sources_ws_source_fkey"
+            columns: ["workspace_id", "source_id"]
+            isOneToOne: false
+            referencedRelation: "sources"
+            referencedColumns: ["workspace_id", "id"]
+          },
+        ]
+      }
       ai_runs: {
         Row: {
           completed_at: string | null
@@ -554,6 +590,56 @@ export type Database = {
           },
         ]
       }
+      idempotency_keys: {
+        Row: {
+          actor_type: Database["public"]["Enums"]["actor_type"]
+          completed_at: string | null
+          created_at: string
+          error_message: string | null
+          expires_at: string
+          key: string
+          operation: string
+          request_hash: string
+          result: Json | null
+          status: Database["public"]["Enums"]["idempotency_status"]
+          workspace_id: string
+        }
+        Insert: {
+          actor_type?: Database["public"]["Enums"]["actor_type"]
+          completed_at?: string | null
+          created_at?: string
+          error_message?: string | null
+          expires_at?: string
+          key: string
+          operation: string
+          request_hash: string
+          result?: Json | null
+          status?: Database["public"]["Enums"]["idempotency_status"]
+          workspace_id: string
+        }
+        Update: {
+          actor_type?: Database["public"]["Enums"]["actor_type"]
+          completed_at?: string | null
+          created_at?: string
+          error_message?: string | null
+          expires_at?: string
+          key?: string
+          operation?: string
+          request_hash?: string
+          result?: Json | null
+          status?: Database["public"]["Enums"]["idempotency_status"]
+          workspace_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "idempotency_keys_workspace_id_fkey"
+            columns: ["workspace_id"]
+            isOneToOne: false
+            referencedRelation: "workspaces"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       mcp_integrations: {
         Row: {
           created_at: string
@@ -564,6 +650,8 @@ export type Database = {
           name: string
           revoked_at: string | null
           scopes: string[]
+          token_hash: string | null
+          token_prefix: string | null
           updated_at: string
           workspace_id: string
           write_enabled: boolean
@@ -577,6 +665,8 @@ export type Database = {
           name: string
           revoked_at?: string | null
           scopes?: string[]
+          token_hash?: string | null
+          token_prefix?: string | null
           updated_at?: string
           workspace_id: string
           write_enabled?: boolean
@@ -590,6 +680,8 @@ export type Database = {
           name?: string
           revoked_at?: string | null
           scopes?: string[]
+          token_hash?: string | null
+          token_prefix?: string | null
           updated_at?: string
           workspace_id?: string
           write_enabled?: boolean
@@ -955,7 +1047,62 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      add_topic_update_tx: {
+        Args: {
+          p_actor_channel?: string
+          p_actor_name?: string
+          p_actor_type?: Database["public"]["Enums"]["actor_type"]
+          p_actor_user_id?: string
+          p_ball_with?: Database["public"]["Enums"]["party"]
+          p_commitment?: Json
+          p_content: string
+          p_correlation_id?: string
+          p_current_state?: string
+          p_decision?: string
+          p_idempotency_key?: string
+          p_is_relevant?: boolean
+          p_next_step?: string
+          p_next_step_due_at?: string
+          p_next_step_owner?: Database["public"]["Enums"]["party"]
+          p_next_step_set?: boolean
+          p_request_hash?: string
+          p_source_id?: string
+          p_status?: Database["public"]["Enums"]["topic_status"]
+          p_topic_id: string
+          p_update_type?: Database["public"]["Enums"]["update_type"]
+          p_workspace_id: string
+        }
+        Returns: Json
+      }
+      assert_workspace_access: {
+        Args: { _workspace_id: string }
+        Returns: undefined
+      }
+      create_workspace_with_owner: {
+        Args: { p_name: string; p_slug?: string }
+        Returns: string
+      }
       ensure_default_workspace: { Args: never; Returns: string }
+      idempotency_finish: {
+        Args: {
+          p_error?: string
+          p_key: string
+          p_ok: boolean
+          p_result?: Json
+          p_workspace_id: string
+        }
+        Returns: undefined
+      }
+      idempotency_reserve: {
+        Args: {
+          p_actor_type?: Database["public"]["Enums"]["actor_type"]
+          p_key: string
+          p_operation: string
+          p_request_hash: string
+          p_workspace_id: string
+        }
+        Returns: Json
+      }
       is_workspace_admin: { Args: { _workspace_id: string }; Returns: boolean }
       is_workspace_member: { Args: { _workspace_id: string }; Returns: boolean }
       workspace_role_of: {
@@ -980,6 +1127,7 @@ export type Database = {
       client_health: "good" | "attention" | "risk" | "unknown"
       commitment_status: "open" | "completed" | "cancelled" | "overdue"
       decision_status: "active" | "superseded"
+      idempotency_status: "in_progress" | "completed" | "failed"
       party: "us" | "client" | "third_party" | "nobody"
       priority_level: "high" | "medium" | "low"
       relationship_status: "active" | "paused" | "archived"
@@ -1140,6 +1288,7 @@ export const Constants = {
       client_health: ["good", "attention", "risk", "unknown"],
       commitment_status: ["open", "completed", "cancelled", "overdue"],
       decision_status: ["active", "superseded"],
+      idempotency_status: ["in_progress", "completed", "failed"],
       party: ["us", "client", "third_party", "nobody"],
       priority_level: ["high", "medium", "low"],
       relationship_status: ["active", "paused", "archived"],

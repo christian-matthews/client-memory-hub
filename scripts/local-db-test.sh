@@ -28,7 +28,7 @@ echo "== supabase stub =================================================="
 psql -v ON_ERROR_STOP=1 -q <<'SQL'
 CREATE ROLE anon NOLOGIN;
 CREATE ROLE authenticated NOLOGIN;
-CREATE ROLE service_role NOLOGIN;
+CREATE ROLE service_role NOLOGIN BYPASSRLS;
 CREATE ROLE tester LOGIN;
 GRANT anon, authenticated, service_role, postgres TO tester;
 CREATE SCHEMA IF NOT EXISTS auth;

@@ -27,8 +27,12 @@ export async function hashPayload(payload: unknown): Promise<string> {
 }
 
 /** Drops undefined keys so RPC arg objects satisfy exactOptionalPropertyTypes. */
-export function compact<T extends Record<string, unknown>>(obj: T): T {
-  return Object.fromEntries(Object.entries(obj).filter(([, v]) => v !== undefined)) as T;
+export function compact<T extends Record<string, unknown>>(
+  obj: T,
+): { [K in keyof T]: Exclude<T[K], undefined> } {
+  return Object.fromEntries(
+    Object.entries(obj).filter(([, v]) => v !== undefined),
+  ) as { [K in keyof T]: Exclude<T[K], undefined> };
 }
 
 interface ReserveResult {

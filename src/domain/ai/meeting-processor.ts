@@ -342,7 +342,7 @@ interface ProposalRow {
  * payload of an existing domain action. Applying a proposal therefore runs the
  * same validated path as a human edit — no separate write path exists.
  */
-function buildProposal(
+export function buildProposal(
   entry: z.infer<typeof extractionItemSchema>,
   ctx: { clientId: string; sourceId: string; validTopicIds: Set<string> },
 ): ProposalRow | null {

@@ -6,6 +6,8 @@ import { Label } from "@/components/ui/label";
 import {
   createIngestionConnectionFn,
   revokeIngestionConnectionFn,
+  rotateIngestionConnectionFn,
+  checkIngestionConnectionFn,
 } from "@/lib/mutations.functions";
 import { useDomainMutation } from "@/lib/use-workspace";
 
@@ -44,6 +46,15 @@ export function IngestionConnections({
     revokeIngestionConnectionFn as never,
     { workspaceId, successMessage: "Conexión revocada", invalidate: [["meetings"]] },
   );
+  const rotate = useDomainMutation<{ connectionId: string }>(
+    rotateIngestionConnectionFn as never,
+    { workspaceId, successMessage: "Secreto rotado: la URL anterior dejó de servir", invalidate: [["meetings"]] },
+  );
+  const check = useDomainMutation<{ connectionId: string }>(checkIngestionConnectionFn as never, {
+    workspaceId,
+    successMessage: "Conexión verificada",
+    invalidate: [["meetings"]],
+  });
 
   const origin = typeof window === "undefined" ? "" : window.location.origin;
   const clientName = (id: string | null) =>
@@ -79,14 +90,65 @@ export function IngestionConnections({
             <span className="flex shrink-0 items-center gap-2">
               <span className="label-caps">{c.revoked_at ? "revocada" : "activa"}</span>
               {canManage && !c.revoked_at && (
-                <Button
-                  size="sm"
-                  variant="ghost"
-                  disabled={revoke.isPending}
-                  onClick={() => revoke.mutate({ connectionId: c.id })}
-                >
-                  Revocar
-                </Button>
+                <>
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    disabled={check.isPending}
+                    onClick={() =>
+                      check.mutate(
+                        { connectionId: c.id },
+                        {
+                          onSuccess: (result) => {
+                            const r = result as {
+                              accepting?: boolean;
+                              receivedCount?: number;
+                              lastUsedAt?: string | null;
+                            };
+                            toast.info(
+                              r.accepting
+                                ? `Acepta envíos · ${r.receivedCount ?? 0} recibidas${
+                                    r.lastUsedAt
+                                      ? ` · último ${new Date(r.lastUsedAt).toLocaleString("es")}`
+                                      : " · sin uso todavía"
+                                  }`
+                                : "No acepta envíos: revocada o deshabilitada",
+                            );
+                          },
+                        },
+                      )
+                    }
+                  >
+                    Probar
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    disabled={rotate.isPending}
+                    onClick={() =>
+                      rotate.mutate(
+                        { connectionId: c.id },
+                        {
+                          onSuccess: (result) => {
+                            const path = (result as { path?: string }).path;
+                            if (path) setUrl(`${origin}${path}`);
+                            setCopied(false);
+                          },
+                        },
+                      )
+                    }
+                  >
+                    Rotar secreto
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    disabled={revoke.isPending}
+                    onClick={() => revoke.mutate({ connectionId: c.id })}
+                  >
+                    Revocar
+                  </Button>
+                </>
               )}
             </span>
           </li>
@@ -172,9 +234,10 @@ export function IngestionConnections({
             </Button>
           </div>
           <p className="mt-2 text-[11px] text-muted-foreground">
-            Cuerpo esperado: JSON con <code>transcript</code> y, opcionalmente, <code>title</code>,{" "}
-            <code>occurredAt</code>, <code>participants</code>, <code>durationSeconds</code>,{" "}
-            <code>externalId</code>. También acepta la transcripción como texto plano.
+            Contrato aceptado: POST con JSON <code>{"{ transcript, title? }"}</code> — nada más. La
+            fecha, el cliente y la conexión los determina el servidor. Respuestas:{" "}
+            <code>202</code> recibida, <code>200</code> duplicada, <code>401</code> credencial
+            inválida.
           </p>
         </div>
       )}

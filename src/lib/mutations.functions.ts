@@ -35,7 +35,10 @@ function mutation(action: (ctx: DomainContext, raw: unknown) => Promise<unknown>
     .middleware([requireSupabaseAuth])
     .inputValidator((input: unknown) =>
       z
-        .object({ workspaceId: z.string().uuid().optional(), payload: z.unknown() })
+        .object({
+          workspaceId: z.union([z.string().uuid(), z.undefined()]),
+          payload: z.unknown(),
+        })
         .parse(input),
     )
     .handler(async ({ context, data }) =>

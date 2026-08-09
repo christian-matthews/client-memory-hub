@@ -15,7 +15,9 @@ import {
   searchClientMemory,
 } from "@/domain/queries/read";
 
-const withWorkspace = z.object({ workspaceId: z.string().uuid().optional() });
+const withWorkspace = z.object({
+  workspaceId: z.union([z.string().uuid(), z.undefined()]),
+});
 
 export const fetchWorkspaces = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])

@@ -225,3 +225,45 @@ Cubierto hoy:
 - La aplicación de propuestas de IA cubre los tipos de cambio ya modelados; no
   hay motor genérico de parches.
 - Un usuario pertenece a workspaces sin flujo de invitación por correo todavía.
+
+## Ingesta de transcripciones (MacWhisper / Whisper Transcription en macOS)
+
+Flujo completo, sin atajos y sin escritura automática en la memoria del cliente:
+
+1. **Conexión de ingesta** (`ingestion_connections`). Un propietario/administrador crea una
+   conexión en *Reuniones → Conexiones de ingesta*. Se genera un secreto de 32 bytes; la base de
+   datos guarda solo su SHA-256 y un prefijo público. La URL completa se muestra **una sola vez**.
+   La conexión puede fijar un cliente por defecto y puede revocarse en cualquier momento.
+
+2. **Webhook** `POST /api/public/ingest/macwhisper/:connectionId/:secret`.
+   Vive bajo `/api/public/*` porque la app de macOS es un llamante externo sin sesión. La credencial
+   viaja en la ruta porque es la única forma que admiten esas apps; por eso:
+   - el espacio de trabajo se deriva de la conexión almacenada, **nunca** del cuerpo;
+   - los fallos de autenticación son uniformes (401 sin detalle);
+   - hay límite de tamaño (512 KB) y rate limiting por conexión + IP;
+   - el endpoint **solo crea evidencia**: una `sources` inmutable (`source_type = meeting`) más un
+     ítem de bandeja (`ingestion_items`). No toca temas, compromisos ni decisiones, y **no dispara
+     IA**.
+
+   Cuerpo JSON: `transcript` (obligatorio), y opcionalmente `title`, `occurredAt`, `participants`,
+   `durationSeconds`, `externalId`, `language`, `clientId`, `metadata`. También acepta la
+   transcripción como `text/plain`. Reenviar la misma transcripción es un *replay* idempotente
+   (unicidad por `(workspace_id, content_hash)`), no un duplicado.
+
+3. **Bandeja de reuniones** (`/meetings`). Muestra lo recibido, su estado
+   (`received → processing → processed | failed | discarded`), permite asignar el cliente y
+   descartar. La evidencia queda visible en la ficha del cliente.
+
+4. **Análisis con IA**, siempre iniciado por una persona. Modelo `openai/gpt-5.6-sol` a través del
+   Lovable AI Gateway (Responses API, en streaming, con `json_schema` estricto). Cada intento deja
+   traza en `ai_runs` (proveedor, modelo, versión de prompt, fuentes usadas, salida estructurada y
+   error si falla). Si el proveedor no está configurado o falla, el ítem queda `failed` con el
+   motivo: **nunca se fabrica contenido**.
+
+5. **Propuestas revisables** (`ai_proposals`, estado `pending`). Cada elemento extraído se guarda
+   con su cita textual como explicación y su confianza. `proposed_changes` es exactamente la carga
+   de una acción de dominio existente (`add_topic_update`, `create_topic`, `create_commitment`,
+   `record_decision`), así que **aprobar y aplicar recorre el mismo camino validado y auditado que
+   una edición humana**. `approved` y `applied` son estados distintos: aprobar no aplica nada;
+   aplicar es un segundo paso explícito. Los `topicId` que no correspondan a un tema abierto del
+   cliente se descartan, y las fechas no interpretables quedan en `null` en lugar de inventarse.

@@ -62,28 +62,53 @@ Todo el acceso pasa por un contexto que ya resolvió el límite multi-tenant:
    `(workspace_id, id)` y claves foráneas compuestas, de modo que una entidad
    hija no puede apuntar a un padre de otro workspace ni siquiera con un bug de
    aplicación.
-3. **`activity_events` es append-only**: sin `UPDATE` ni `DELETE` por política.
+3. **`activity_events` es append-only y no falsificable**: el rol
+   `authenticated` no tiene `INSERT`, `UPDATE` ni `DELETE` sobre la tabla. El
+   único camino es `record_activity_v1`, que **deriva la identidad del actor
+   dentro de la base**: con sesión de usuario fuerza `actor_type = 'user'` y
+   `actor_user_id = auth.uid()`; `ai` e `integration` solo son posibles por la
+   ruta privilegiada del servidor. Lo que pida el navegador se ignora.
 4. **Reglas de membresía por trigger**: no se puede quedar sin `owner`, y solo
    `owner`/`admin` gestionan roles.
 5. **Tokens MCP hasheados**: la base guarda SHA-256 más un prefijo público. El
    token en claro existe una única vez, en la respuesta de creación, y nunca se
    registra en logs ni en la auditoría.
 6. **Errores internos no se filtran** al agente: se registran en el servidor y
-   el llamante recibe un mensaje genérico.
+   el llamante recibe un mensaje genérico. La autenticación MCP responde siempre
+   lo mismo (sin distinguir token ausente, inválido, revocado o expirado) para
+   no permitir enumeración.
+7. **Funciones internas sin acceso desde el cliente**: `idempotency_reserve`,
+   `idempotency_finish`, `add_topic_update_tx`, `domain_write_core`,
+   `domain_write_guarded` y `domain_write_as_integration` tienen `EXECUTE`
+   revocado para `anon` y `authenticated`. La app solo puede llamar los puntos
+   de entrada seguros (`domain_write`, `record_activity_v1`).
+8. **Claves foráneas opcionales usan `ON DELETE SET NULL (columna_id)`**, de modo
+   que al borrar el padre se anula solo la referencia y `workspace_id` se
+   conserva; el borrado del workspace sí cascadea.
 
 ## Operaciones atómicas e idempotencia
 
-- La operación compuesta “agregar actualización a un tema” (actualización +
-  cambio de estado/pelota/próximo paso + decisión + compromiso + vínculo de
-  fuente + auditoría) se ejecuta **en una sola transacción de PostgreSQL** vía
-  la función `add_topic_update_tx`. No hay estados intermedios visibles.
+Todas las escrituras del dominio pasan por un único despachador transaccional
+(`src/domain/shared/write.ts` → `domain_write`). En **una sola transacción de
+PostgreSQL** ocurren: reserva de la clave de idempotencia, validación del hash
+del payload, la mutación compuesta, la auditoría y el cierre de la clave. No hay
+estados intermedios visibles ni auditoría sin efecto (ni efecto sin auditoría).
+
+Operaciones cubiertas: `create_client`, `create_topic`, `add_topic_update`,
+`set_topic_next_step`, `create_commitment`, `complete_commitment`.
+
+- La operación compuesta “agregar actualización a un tema” incluye actualización
+  + cambio de estado/pelota/próximo paso + decisión + compromiso + vínculo de
+  fuente + auditoría.
 - Toda acción de escritura acepta `idempotencyKey`. La deduplicación vive en la
   tabla `idempotency_keys` (independiente de la auditoría) y compara un hash
-  estable del payload:
+  SHA-256 estable del payload:
   - misma clave + mismo payload → se devuelve el resultado original con
     `replayed: true`;
-  - misma clave + payload distinto → error `conflict`;
-  - clave en curso → error `conflict`.
+  - misma clave + payload u operación distintos → error `conflict`;
+  - clave en curso → error `conflict`;
+  - las claves están aisladas por workspace y por actor.
+
 
 ## Reglas de atención (sin IA)
 

@@ -646,6 +646,174 @@ export type Database = {
           },
         ]
       }
+      ingestion_connections: {
+        Row: {
+          created_at: string
+          created_by: string | null
+          default_client_id: string | null
+          enabled: boolean
+          id: string
+          last_used_at: string | null
+          name: string
+          provider: string
+          revoked_at: string | null
+          secret_hash: string
+          secret_prefix: string
+          updated_at: string
+          workspace_id: string
+        }
+        Insert: {
+          created_at?: string
+          created_by?: string | null
+          default_client_id?: string | null
+          enabled?: boolean
+          id?: string
+          last_used_at?: string | null
+          name: string
+          provider?: string
+          revoked_at?: string | null
+          secret_hash: string
+          secret_prefix: string
+          updated_at?: string
+          workspace_id: string
+        }
+        Update: {
+          created_at?: string
+          created_by?: string | null
+          default_client_id?: string | null
+          enabled?: boolean
+          id?: string
+          last_used_at?: string | null
+          name?: string
+          provider?: string
+          revoked_at?: string | null
+          secret_hash?: string
+          secret_prefix?: string
+          updated_at?: string
+          workspace_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ingestion_connections_client_fk"
+            columns: ["workspace_id", "default_client_id"]
+            isOneToOne: false
+            referencedRelation: "clients"
+            referencedColumns: ["workspace_id", "id"]
+          },
+          {
+            foreignKeyName: "ingestion_connections_workspace_id_fkey"
+            columns: ["workspace_id"]
+            isOneToOne: false
+            referencedRelation: "workspaces"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      ingestion_items: {
+        Row: {
+          ai_run_id: string | null
+          client_id: string | null
+          connection_id: string | null
+          content_hash: string
+          created_at: string
+          duration_seconds: number | null
+          error_message: string | null
+          external_id: string | null
+          id: string
+          language: string | null
+          metadata: Json
+          occurred_at: string | null
+          participants: string[]
+          processed_at: string | null
+          proposal_count: number
+          source_id: string | null
+          status: Database["public"]["Enums"]["ingestion_status"]
+          title: string | null
+          updated_at: string
+          workspace_id: string
+        }
+        Insert: {
+          ai_run_id?: string | null
+          client_id?: string | null
+          connection_id?: string | null
+          content_hash: string
+          created_at?: string
+          duration_seconds?: number | null
+          error_message?: string | null
+          external_id?: string | null
+          id?: string
+          language?: string | null
+          metadata?: Json
+          occurred_at?: string | null
+          participants?: string[]
+          processed_at?: string | null
+          proposal_count?: number
+          source_id?: string | null
+          status?: Database["public"]["Enums"]["ingestion_status"]
+          title?: string | null
+          updated_at?: string
+          workspace_id: string
+        }
+        Update: {
+          ai_run_id?: string | null
+          client_id?: string | null
+          connection_id?: string | null
+          content_hash?: string
+          created_at?: string
+          duration_seconds?: number | null
+          error_message?: string | null
+          external_id?: string | null
+          id?: string
+          language?: string | null
+          metadata?: Json
+          occurred_at?: string | null
+          participants?: string[]
+          processed_at?: string | null
+          proposal_count?: number
+          source_id?: string | null
+          status?: Database["public"]["Enums"]["ingestion_status"]
+          title?: string | null
+          updated_at?: string
+          workspace_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ingestion_items_ai_run_fk"
+            columns: ["workspace_id", "ai_run_id"]
+            isOneToOne: false
+            referencedRelation: "ai_runs"
+            referencedColumns: ["workspace_id", "id"]
+          },
+          {
+            foreignKeyName: "ingestion_items_client_fk"
+            columns: ["workspace_id", "client_id"]
+            isOneToOne: false
+            referencedRelation: "clients"
+            referencedColumns: ["workspace_id", "id"]
+          },
+          {
+            foreignKeyName: "ingestion_items_connection_fk"
+            columns: ["workspace_id", "connection_id"]
+            isOneToOne: false
+            referencedRelation: "ingestion_connections"
+            referencedColumns: ["workspace_id", "id"]
+          },
+          {
+            foreignKeyName: "ingestion_items_source_fk"
+            columns: ["workspace_id", "source_id"]
+            isOneToOne: false
+            referencedRelation: "sources"
+            referencedColumns: ["workspace_id", "id"]
+          },
+          {
+            foreignKeyName: "ingestion_items_workspace_id_fkey"
+            columns: ["workspace_id"]
+            isOneToOne: false
+            referencedRelation: "workspaces"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       mcp_integrations: {
         Row: {
           created_at: string
@@ -1197,6 +1365,12 @@ export type Database = {
       commitment_status: "open" | "completed" | "cancelled" | "overdue"
       decision_status: "active" | "superseded"
       idempotency_status: "in_progress" | "completed" | "failed"
+      ingestion_status:
+        | "received"
+        | "processing"
+        | "processed"
+        | "failed"
+        | "discarded"
       party: "us" | "client" | "third_party" | "nobody"
       priority_level: "high" | "medium" | "low"
       relationship_status: "active" | "paused" | "archived"
@@ -1358,6 +1532,13 @@ export const Constants = {
       commitment_status: ["open", "completed", "cancelled", "overdue"],
       decision_status: ["active", "superseded"],
       idempotency_status: ["in_progress", "completed", "failed"],
+      ingestion_status: [
+        "received",
+        "processing",
+        "processed",
+        "failed",
+        "discarded",
+      ],
       party: ["us", "client", "third_party", "nobody"],
       priority_level: ["high", "medium", "low"],
       relationship_status: ["active", "paused", "archived"],

@@ -14,6 +14,7 @@ import { Route as AuthenticatedRouteRouteImport } from './routes/_authenticated/
 import { Route as AuthRouteImport } from './routes/auth'
 import { Route as AuthenticatedCommitmentsRouteImport } from './routes/_authenticated/commitments'
 import { Route as AuthenticatedDashboardRouteImport } from './routes/_authenticated/dashboard'
+import { Route as AuthenticatedMeetingsRouteImport } from './routes/_authenticated/meetings'
 import { Route as AuthenticatedSettingsRouteImport } from './routes/_authenticated/settings'
 import { Route as AuthenticatedClientsClientIdRouteImport } from './routes/_authenticated/clients.$clientId'
 import { Route as AuthenticatedTopicsTopicIdRouteImport } from './routes/_authenticated/topics.$topicId'
@@ -43,6 +44,11 @@ const AuthenticatedCommitmentsRoute =
 const AuthenticatedDashboardRoute = AuthenticatedDashboardRouteImport.update({
   id: '/dashboard',
   path: '/dashboard',
+  getParentRoute: () => AuthenticatedRouteRoute,
+} as any)
+const AuthenticatedMeetingsRoute = AuthenticatedMeetingsRouteImport.update({
+  id: '/meetings',
+  path: '/meetings',
   getParentRoute: () => AuthenticatedRouteRoute,
 } as any)
 const AuthenticatedSettingsRoute = AuthenticatedSettingsRouteImport.update({
@@ -79,6 +85,7 @@ export interface FileRoutesByFullPath {
   '/auth': typeof AuthRoute
   '/commitments': typeof AuthenticatedCommitmentsRoute
   '/dashboard': typeof AuthenticatedDashboardRoute
+  '/meetings': typeof AuthenticatedMeetingsRoute
   '/settings': typeof AuthenticatedSettingsRoute
   '/clients/$clientId': typeof AuthenticatedClientsClientIdRoute
   '/topics/$topicId': typeof AuthenticatedTopicsTopicIdRoute
@@ -90,6 +97,7 @@ export interface FileRoutesByTo {
   '/auth': typeof AuthRoute
   '/commitments': typeof AuthenticatedCommitmentsRoute
   '/dashboard': typeof AuthenticatedDashboardRoute
+  '/meetings': typeof AuthenticatedMeetingsRoute
   '/settings': typeof AuthenticatedSettingsRoute
   '/clients/$clientId': typeof AuthenticatedClientsClientIdRoute
   '/topics/$topicId': typeof AuthenticatedTopicsTopicIdRoute
@@ -103,6 +111,7 @@ export interface FileRoutesById {
   '/auth': typeof AuthRoute
   '/_authenticated/commitments': typeof AuthenticatedCommitmentsRoute
   '/_authenticated/dashboard': typeof AuthenticatedDashboardRoute
+  '/_authenticated/meetings': typeof AuthenticatedMeetingsRoute
   '/_authenticated/settings': typeof AuthenticatedSettingsRoute
   '/_authenticated/clients/$clientId': typeof AuthenticatedClientsClientIdRoute
   '/_authenticated/topics/$topicId': typeof AuthenticatedTopicsTopicIdRoute
@@ -116,6 +125,7 @@ export interface FileRouteTypes {
     | '/auth'
     | '/commitments'
     | '/dashboard'
+    | '/meetings'
     | '/settings'
     | '/clients/$clientId'
     | '/topics/$topicId'
@@ -127,6 +137,7 @@ export interface FileRouteTypes {
     | '/auth'
     | '/commitments'
     | '/dashboard'
+    | '/meetings'
     | '/settings'
     | '/clients/$clientId'
     | '/topics/$topicId'
@@ -139,6 +150,7 @@ export interface FileRouteTypes {
     | '/auth'
     | '/_authenticated/commitments'
     | '/_authenticated/dashboard'
+    | '/_authenticated/meetings'
     | '/_authenticated/settings'
     | '/_authenticated/clients/$clientId'
     | '/_authenticated/topics/$topicId'
@@ -191,6 +203,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedDashboardRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
+    '/_authenticated/meetings': {
+      id: '/_authenticated/meetings'
+      path: '/meetings'
+      fullPath: '/meetings'
+      preLoaderRoute: typeof AuthenticatedMeetingsRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
     '/_authenticated/settings': {
       id: '/_authenticated/settings'
       path: '/settings'
@@ -232,6 +251,7 @@ declare module '@tanstack/react-router' {
 interface AuthenticatedRouteRouteChildren {
   AuthenticatedCommitmentsRoute: typeof AuthenticatedCommitmentsRoute
   AuthenticatedDashboardRoute: typeof AuthenticatedDashboardRoute
+  AuthenticatedMeetingsRoute: typeof AuthenticatedMeetingsRoute
   AuthenticatedSettingsRoute: typeof AuthenticatedSettingsRoute
   AuthenticatedClientsClientIdRoute: typeof AuthenticatedClientsClientIdRoute
   AuthenticatedTopicsTopicIdRoute: typeof AuthenticatedTopicsTopicIdRoute
@@ -240,6 +260,7 @@ interface AuthenticatedRouteRouteChildren {
 const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
   AuthenticatedCommitmentsRoute: AuthenticatedCommitmentsRoute,
   AuthenticatedDashboardRoute: AuthenticatedDashboardRoute,
+  AuthenticatedMeetingsRoute: AuthenticatedMeetingsRoute,
   AuthenticatedSettingsRoute: AuthenticatedSettingsRoute,
   AuthenticatedClientsClientIdRoute: AuthenticatedClientsClientIdRoute,
   AuthenticatedTopicsTopicIdRoute: AuthenticatedTopicsTopicIdRoute,

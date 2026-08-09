@@ -2,6 +2,8 @@ import { createFileRoute } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import { AppShell, SectionTitle } from "@/components/app-shell";
+import { McpIntegrations } from "@/components/mcp-integrations";
+
 import { Skeleton } from "@/components/ui/skeleton";
 import { fetchWorkspaceSettings } from "@/lib/read.functions";
 import { unwrap, useActiveWorkspace } from "@/lib/use-workspace";

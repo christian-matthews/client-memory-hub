@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -17,6 +18,18 @@ interface IntegrationRow {
   revoked_at: string | null;
 }
 
+function isExpired(expiresAt: string | null) {
+  return !!expiresAt && new Date(expiresAt).getTime() < Date.now();
+}
+
+function expiryLabel(expiresAt: string | null) {
+  if (!expiresAt) return "sin vencimiento";
+  const days = Math.ceil((new Date(expiresAt).getTime() - Date.now()) / 86_400_000);
+  if (days < 0) return "expirada";
+  if (days === 0) return "expira hoy";
+  return `expira en ${days} d`;
+}
+
 export function McpIntegrations({
   integrations,
   workspaceId,
@@ -28,9 +41,16 @@ export function McpIntegrations({
 }) {
   const [name, setName] = useState("");
   const [writeEnabled, setWriteEnabled] = useState(false);
+  const [expiresInDays, setExpiresInDays] = useState("90");
   const [token, setToken] = useState<string | null>(null);
+  const [copied, setCopied] = useState(false);
 
-  const create = useDomainMutation<{ name: string; scopes: string[]; writeEnabled: boolean }>(
+  const create = useDomainMutation<{
+    name: string;
+    scopes: string[];
+    writeEnabled: boolean;
+    expiresInDays: number | null;
+  }>(
     createIntegrationFn as never,
     { workspaceId, successMessage: "Integración creada", invalidate: [["settings"]] },
   );
@@ -63,15 +83,19 @@ export function McpIntegrations({
               <span className="font-mono text-[11px] text-muted-foreground">
                 {i.token_prefix ?? "—"}
                 {i.last_used_at ? ` · usado ${new Date(i.last_used_at).toLocaleDateString("es")}` : " · sin uso"}
+                {" · "}
+                {expiryLabel(i.expires_at)}
               </span>
             </span>
             <span className="flex shrink-0 items-center gap-2">
               <span className="label-caps">
                 {i.revoked_at
                   ? "revocada"
-                  : i.write_enabled
-                    ? "lectura+escritura"
-                    : "lectura"}
+                  : isExpired(i.expires_at)
+                    ? "expirada"
+                    : i.write_enabled
+                      ? "lectura+escritura"
+                      : "lectura"}
               </span>
               {canManage && !i.revoked_at && (
                 <Button
@@ -99,12 +123,14 @@ export function McpIntegrations({
                 name: name.trim(),
                 scopes: writeEnabled ? ["read", "write"] : ["read"],
                 writeEnabled,
+                expiresInDays: expiresInDays === "never" ? null : Number(expiresInDays),
               },
               {
                 onSuccess: (data) => {
                   setToken((data as { token?: string }).token ?? null);
                   setName("");
                   setWriteEnabled(false);
+                  setCopied(false);
                 },
               },
             );
@@ -121,6 +147,22 @@ export function McpIntegrations({
               placeholder="Claude Desktop"
               maxLength={80}
             />
+          </div>
+          <div className="grid gap-1.5">
+            <Label htmlFor="mcp-expiry" className="label-caps">
+              Vencimiento
+            </Label>
+            <select
+              id="mcp-expiry"
+              value={expiresInDays}
+              onChange={(e) => setExpiresInDays(e.target.value)}
+              className="h-9 rounded-md border border-input bg-background px-2 text-sm"
+            >
+              <option value="30">30 días</option>
+              <option value="90">90 días</option>
+              <option value="365">1 año</option>
+              <option value="never">Sin vencimiento</option>
+            </select>
           </div>
           <div className="flex items-center justify-between gap-3">
             <Label htmlFor="mcp-write" className="text-sm font-normal">
@@ -143,12 +185,24 @@ export function McpIntegrations({
             variant="outline"
             className="mt-2"
             onClick={() => {
-              void navigator.clipboard?.writeText(token);
-              setToken(null);
+              void (async () => {
+                try {
+                  await navigator.clipboard.writeText(token);
+                  setCopied(true);
+                  toast.success("Token copiado al portapapeles");
+                  setToken(null);
+                } catch {
+                  toast.error("No se pudo copiar: copia el token manualmente antes de cerrar");
+                }
+              })();
             }}
           >
-            Copiar y ocultar
+            {copied ? "Copiado" : "Copiar y ocultar"}
           </Button>
+          <p className="mt-2 text-[11px] text-muted-foreground">
+            Guárdalo ahora: no se puede volver a mostrar. Si lo pierdes, revoca la integración y crea
+            otra.
+          </p>
         </div>
       )}
     </section>

@@ -359,7 +359,12 @@ export async function receiveTranscript(
   connection: ResolvedConnection,
   raw: unknown,
 ): Promise<{ replayed: boolean }> {
-  const payload = macwhisperPayloadSchema.parse(raw);
+  // A malformed or over-permissive body is a client error, never a 500.
+  const parsedPayload = macwhisperPayloadSchema.safeParse(raw);
+  if (!parsedPayload.success) {
+    throw new DomainError("invalid_input", "El cuerpo no cumple el contrato { transcript, title? }");
+  }
+  const payload = parsedPayload.data;
   const contentHash = await sha256Hex(payload.transcript);
 
   const { data, error } = await ctx.db.rpc("receive_macwhisper_transcript_v1", {

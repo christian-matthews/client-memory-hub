@@ -21,9 +21,11 @@ export const Route = createFileRoute("/auth")({
       { property: "og:description", content: "Accede a tu memoria operativa por cliente." },
     ],
   }),
-  validateSearch: (s: Record<string, unknown>) => ({
-    next: typeof s['next'] === "string" && s['next'].startsWith("/") ? s['next'] : undefined,
-  }),
+  validateSearch: (s: Record<string, unknown>): { next?: string } => {
+    const next = s['next'];
+    // Only same-origin relative paths are preserved through sign-in.
+    return typeof next === "string" && next.startsWith("/") ? { next } : {};
+  },
   beforeLoad: async ({ search }) => {
     const { data } = await supabase.auth.getUser();
     if (data.user) throw redirect({ href: search.next ?? "/dashboard" });

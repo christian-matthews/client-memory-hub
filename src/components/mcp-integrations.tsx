@@ -60,8 +60,9 @@ export function McpIntegrations({
     invalidate: [["settings"]],
   });
 
-  const endpoint =
-    typeof window === "undefined" ? "/api/public/mcp" : `${window.location.origin}/api/public/mcp`;
+  const origin = typeof window === "undefined" ? "" : window.location.origin;
+  const endpoint = `${origin}/api/public/mcp`;
+  const isPreviewOrigin = origin.includes("id-preview--");
 
   return (
     <section className="panel p-4">
@@ -70,7 +71,37 @@ export function McpIntegrations({
         Los agentes leen y escriben con las mismas reglas y auditoría que una persona. El token define
         el espacio de trabajo y los permisos.
       </p>
-      <p className="mt-2 break-all font-mono text-[11px] text-muted-foreground">{endpoint}</p>
+
+      <div className="mt-3 rounded-md border border-border/60 bg-muted/30 p-3">
+        <p className="label-caps">Endpoint MCP</p>
+        <div className="mt-1 flex items-start justify-between gap-2">
+          <code className="min-w-0 break-all font-mono text-[11px] text-foreground">{endpoint}</code>
+          <Button
+            size="sm"
+            variant="ghost"
+            className="shrink-0"
+            onClick={() => {
+              void navigator.clipboard.writeText(endpoint);
+              toast.success("Endpoint copiado");
+            }}
+          >
+            Copiar
+          </Button>
+        </div>
+        <p className="mt-2 text-[11px] text-muted-foreground">
+          Transporte: HTTP (JSON-RPC 2.0, método POST). Autenticación: cabecera{" "}
+          <code className="font-mono">Authorization: Bearer cm_…</code> con el token de una
+          integración de esta lista.
+        </p>
+        {isPreviewOrigin && (
+          <p className="mt-2 text-[11px] text-destructive">
+            Estás en la URL de vista previa, que exige iniciar sesión en Lovable y no sirve para
+            clientes MCP. Usa el dominio publicado de la app (por ejemplo{" "}
+            <code className="font-mono">https://tu-app.lovable.app/api/public/mcp</code>).
+          </p>
+        )}
+      </div>
+
 
       <ul className="mt-3 grid gap-2 text-sm">
         {integrations.length === 0 && (

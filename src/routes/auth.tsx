@@ -21,14 +21,20 @@ export const Route = createFileRoute("/auth")({
       { property: "og:description", content: "Accede a tu memoria operativa por cliente." },
     ],
   }),
-  beforeLoad: async () => {
+  validateSearch: (s: Record<string, unknown>) => ({
+    next: typeof s['next'] === "string" && s['next'].startsWith("/") ? s['next'] : undefined,
+  }),
+  beforeLoad: async ({ search }) => {
     const { data } = await supabase.auth.getUser();
-    if (data.user) throw redirect({ to: "/dashboard" });
+    if (data.user) throw redirect({ href: search.next ?? "/dashboard" });
   },
   component: AuthPage,
 });
 
 function AuthPage() {
+  const { next } = Route.useSearch();
+  // Preserved destination (e.g. an OAuth consent URL) must survive every path.
+  const destination = next ?? "/dashboard";
   const [mode, setMode] = useState<"signin" | "signup">("signin");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -37,10 +43,10 @@ function AuthPage() {
 
   useEffect(() => {
     const { data } = supabase.auth.onAuthStateChange((event, session) => {
-      if (event === "SIGNED_IN" && session) window.location.assign("/dashboard");
+      if (event === "SIGNED_IN" && session) window.location.assign(destination);
     });
     return () => data.subscription.unsubscribe();
-  }, []);
+  }, [destination]);
 
   async function submit(event: React.FormEvent) {
     event.preventDefault();
@@ -50,7 +56,7 @@ function AuthPage() {
         const { data, error } = await supabase.auth.signUp({
           email,
           password,
-          options: { emailRedirectTo: `${window.location.origin}/dashboard` },
+          options: { emailRedirectTo: `${window.location.origin}${destination}` },
         });
         if (error) throw error;
         if (!data.session) {
@@ -70,14 +76,14 @@ function AuthPage() {
 
   async function google() {
     const result = await lovable.auth.signInWithOAuth("google", {
-      redirect_uri: window.location.origin,
+      redirect_uri: `${window.location.origin}${destination}`,
     });
     if (result.error) {
       toast.error("No se pudo iniciar sesión con Google");
       return;
     }
     if (result.redirected) return;
-    window.location.assign("/dashboard");
+    window.location.assign(destination);
   }
 
   return (

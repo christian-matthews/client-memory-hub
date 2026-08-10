@@ -13,7 +13,7 @@ const baseRequest = {
   sourceIds: [],
   expectedSchema: EXTRACTION_SCHEMA as unknown as Record<string, unknown>,
   modelConfig: { model: "openai/gpt-5.6-sol", promptVersion: "v-test" },
-  workspaceContext: { workspaceId: "11111111-1111-1111-1111-111111111111", clientId: null },
+  workspaceContext: { workspaceId: "11111111-1111-1111-1111-111111111111", clientId: undefined },
 };
 
 describe("gateway de IA", () => {

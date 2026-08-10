@@ -1,0 +1,522 @@
+{
+  "version": 1,
+  "sdk_version": "0.26.1",
+  "path": "/mcp",
+  "auth": {
+    "type": "oauth",
+    "issuer": "https://mwozectesqigxobyjstf.supabase.co/auth/v1",
+    "accepted_audiences": [
+      "authenticated"
+    ]
+  },
+  "mcp": {
+    "server": {
+      "name": "client-compass",
+      "version": "0.1.0",
+      "title": "Client Compass"
+    },
+    "tools": [
+      {
+        "name": "list_clients",
+        "title": "Listar clientes",
+        "description": "Lista los clientes activos del espacio de trabajo de la integración.",
+        "annotations": {
+          "readOnlyHint": true,
+          "idempotentHint": true,
+          "openWorldHint": false
+        },
+        "inputSchema": {
+          "$schema": "http://json-schema.org/draft-07/schema#",
+          "type": "object",
+          "properties": {}
+        },
+        "outputSchema": null
+      },
+      {
+        "name": "get_client_brief",
+        "title": "Resumen de cliente",
+        "description": "Estado actual de un cliente: temas abiertos, bloqueados y compromisos pendientes.",
+        "annotations": {
+          "readOnlyHint": true,
+          "idempotentHint": true,
+          "openWorldHint": false
+        },
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "clientId": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          "required": [
+            "clientId"
+          ],
+          "additionalProperties": false,
+          "$schema": "http://json-schema.org/draft-07/schema#"
+        },
+        "outputSchema": null
+      },
+      {
+        "name": "list_client_topics",
+        "title": "Listar temas de un cliente",
+        "description": "Temas de un cliente, opcionalmente incluyendo resueltos y archivados.",
+        "annotations": {
+          "readOnlyHint": true,
+          "idempotentHint": true,
+          "openWorldHint": false
+        },
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "clientId": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "includeClosed": {
+              "type": "boolean"
+            }
+          },
+          "required": [
+            "clientId"
+          ],
+          "additionalProperties": false,
+          "$schema": "http://json-schema.org/draft-07/schema#"
+        },
+        "outputSchema": null
+      },
+      {
+        "name": "get_topic_timeline",
+        "title": "Cronología de un tema",
+        "description": "Actualizaciones, decisiones, compromisos y fuentes de un tema.",
+        "annotations": {
+          "readOnlyHint": true,
+          "idempotentHint": true,
+          "openWorldHint": false
+        },
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "topicId": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          "required": [
+            "topicId"
+          ],
+          "additionalProperties": false,
+          "$schema": "http://json-schema.org/draft-07/schema#"
+        },
+        "outputSchema": null
+      },
+      {
+        "name": "list_open_commitments",
+        "title": "Compromisos abiertos",
+        "description": "Compromisos pendientes del espacio de trabajo, con vencidos primero.",
+        "annotations": {
+          "readOnlyHint": true,
+          "idempotentHint": true,
+          "openWorldHint": false
+        },
+        "inputSchema": {
+          "$schema": "http://json-schema.org/draft-07/schema#",
+          "type": "object",
+          "properties": {}
+        },
+        "outputSchema": null
+      },
+      {
+        "name": "get_attention_items",
+        "title": "Qué requiere atención",
+        "description": "Clientes y temas que requieren atención, con las razones concretas.",
+        "annotations": {
+          "readOnlyHint": true,
+          "idempotentHint": true,
+          "openWorldHint": false
+        },
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "filter": {
+              "type": "string",
+              "enum": [
+                "all",
+                "needs_attention",
+                "waiting_client",
+                "pending_us",
+                "stale"
+              ]
+            }
+          },
+          "additionalProperties": false,
+          "$schema": "http://json-schema.org/draft-07/schema#"
+        },
+        "outputSchema": null
+      },
+      {
+        "name": "search_client_memory",
+        "title": "Buscar en la memoria",
+        "description": "Busca texto en temas, actualizaciones, decisiones y fuentes.",
+        "annotations": {
+          "readOnlyHint": true,
+          "idempotentHint": true,
+          "openWorldHint": false
+        },
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "query": {
+              "type": "string",
+              "minLength": 2,
+              "maxLength": 200
+            }
+          },
+          "required": [
+            "query"
+          ],
+          "additionalProperties": false,
+          "$schema": "http://json-schema.org/draft-07/schema#"
+        },
+        "outputSchema": null
+      },
+      {
+        "name": "create_client",
+        "title": "Crear cliente",
+        "description": "Crea un cliente en el espacio de trabajo de la integración.",
+        "annotations": {
+          "readOnlyHint": false,
+          "destructiveHint": false,
+          "openWorldHint": false
+        },
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "name": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 160
+            },
+            "description": {
+              "type": "string",
+              "maxLength": 2000
+            },
+            "currentSummary": {
+              "type": "string",
+              "maxLength": 4000
+            },
+            "idempotencyKey": {
+              "type": "string",
+              "minLength": 8,
+              "maxLength": 200
+            }
+          },
+          "required": [
+            "name"
+          ],
+          "additionalProperties": false,
+          "$schema": "http://json-schema.org/draft-07/schema#"
+        },
+        "outputSchema": null
+      },
+      {
+        "name": "create_topic",
+        "title": "Crear tema",
+        "description": "Crea un tema para un cliente.",
+        "annotations": {
+          "readOnlyHint": false,
+          "destructiveHint": false,
+          "openWorldHint": false
+        },
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "clientId": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "title": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 200
+            },
+            "currentState": {
+              "type": "string",
+              "maxLength": 2000
+            },
+            "nextStep": {
+              "type": "string",
+              "maxLength": 500
+            },
+            "idempotencyKey": {
+              "type": "string",
+              "minLength": 8,
+              "maxLength": 200
+            }
+          },
+          "required": [
+            "clientId",
+            "title"
+          ],
+          "additionalProperties": false,
+          "$schema": "http://json-schema.org/draft-07/schema#"
+        },
+        "outputSchema": null
+      },
+      {
+        "name": "add_topic_update",
+        "title": "Agregar actualización a un tema",
+        "description": "Operación transaccional: registra la actualización y opcionalmente cambia estado, pelota, próximo paso, decisión, compromiso y fuente.",
+        "annotations": {
+          "readOnlyHint": false,
+          "destructiveHint": false,
+          "openWorldHint": false
+        },
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "topicId": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "content": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 5000
+            },
+            "updateType": {
+              "type": "string",
+              "enum": [
+                "note",
+                "fact",
+                "decision",
+                "status_change",
+                "milestone"
+              ]
+            },
+            "isRelevant": {
+              "type": "boolean"
+            },
+            "status": {
+              "type": "string",
+              "enum": [
+                "active",
+                "waiting_client",
+                "pending_us",
+                "blocked",
+                "monitoring",
+                "resolved",
+                "archived"
+              ]
+            },
+            "ballWith": {
+              "type": "string",
+              "enum": [
+                "us",
+                "client",
+                "third_party",
+                "nobody"
+              ]
+            },
+            "currentState": {
+              "type": "string",
+              "maxLength": 2000
+            },
+            "decision": {
+              "type": "string",
+              "maxLength": 1000
+            },
+            "commitment": {
+              "type": "object",
+              "properties": {
+                "description": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 500
+                },
+                "responsibleParty": {
+                  "type": "string",
+                  "enum": [
+                    "us",
+                    "client",
+                    "third_party"
+                  ]
+                },
+                "responsibleName": {
+                  "type": "string",
+                  "maxLength": 160
+                },
+                "dueAt": {
+                  "type": "string",
+                  "format": "date-time"
+                }
+              },
+              "required": [
+                "description",
+                "responsibleParty"
+              ],
+              "additionalProperties": false
+            },
+            "idempotencyKey": {
+              "type": "string",
+              "minLength": 8,
+              "maxLength": 200
+            }
+          },
+          "required": [
+            "topicId",
+            "content"
+          ],
+          "additionalProperties": false,
+          "$schema": "http://json-schema.org/draft-07/schema#"
+        },
+        "outputSchema": null
+      },
+      {
+        "name": "set_topic_next_step",
+        "title": "Definir próximo paso",
+        "description": "Define el próximo paso de un tema, su responsable y su vencimiento.",
+        "annotations": {
+          "readOnlyHint": false,
+          "destructiveHint": false,
+          "openWorldHint": false
+        },
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "topicId": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "nextStep": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 500
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "nextStepOwner": {
+              "type": "string",
+              "enum": [
+                "us",
+                "client",
+                "third_party",
+                "nobody"
+              ]
+            },
+            "nextStepDueAt": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "idempotencyKey": {
+              "type": "string",
+              "minLength": 8,
+              "maxLength": 200
+            }
+          },
+          "required": [
+            "topicId",
+            "nextStep"
+          ],
+          "additionalProperties": false,
+          "$schema": "http://json-schema.org/draft-07/schema#"
+        },
+        "outputSchema": null
+      },
+      {
+        "name": "create_commitment",
+        "title": "Crear compromiso",
+        "description": "Crea un compromiso dentro de un tema.",
+        "annotations": {
+          "readOnlyHint": false,
+          "destructiveHint": false,
+          "openWorldHint": false
+        },
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "topicId": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "description": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 500
+            },
+            "responsibleParty": {
+              "type": "string",
+              "enum": [
+                "us",
+                "client",
+                "third_party"
+              ]
+            },
+            "responsibleName": {
+              "type": "string",
+              "maxLength": 160
+            },
+            "dueAt": {
+              "type": "string",
+              "format": "date-time"
+            },
+            "idempotencyKey": {
+              "type": "string",
+              "minLength": 8,
+              "maxLength": 200
+            }
+          },
+          "required": [
+            "topicId",
+            "description",
+            "responsibleParty"
+          ],
+          "additionalProperties": false,
+          "$schema": "http://json-schema.org/draft-07/schema#"
+        },
+        "outputSchema": null
+      },
+      {
+        "name": "complete_commitment",
+        "title": "Completar compromiso",
+        "description": "Marca un compromiso como cumplido.",
+        "annotations": {
+          "readOnlyHint": false,
+          "destructiveHint": false,
+          "openWorldHint": false
+        },
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "commitmentId": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "idempotencyKey": {
+              "type": "string",
+              "minLength": 8,
+              "maxLength": 200
+            }
+          },
+          "required": [
+            "commitmentId"
+          ],
+          "additionalProperties": false,
+          "$schema": "http://json-schema.org/draft-07/schema#"
+        },
+        "outputSchema": null
+      }
+    ]
+  }
+}

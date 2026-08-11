@@ -57,7 +57,7 @@ function AuthPage() {
     event.preventDefault();
     setPending(true);
     try {
-      if (mode === "signup") {
+      if (SIGNUP_ENABLED && mode === "signup") {
         const { data, error } = await supabase.auth.signUp({
           email,
           password,

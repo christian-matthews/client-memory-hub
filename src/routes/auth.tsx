@@ -156,13 +156,19 @@ function AuthPage() {
                 Continuar con Google
               </Button>
 
-              <button
-                type="button"
-                className="mt-4 w-full text-center text-xs text-muted-foreground underline-offset-4 hover:underline"
-                onClick={() => setMode(mode === "signin" ? "signup" : "signin")}
-              >
-                {mode === "signin" ? "No tengo cuenta" : "Ya tengo cuenta"}
-              </button>
+              {SIGNUP_ENABLED ? (
+                <button
+                  type="button"
+                  className="mt-4 w-full text-center text-xs text-muted-foreground underline-offset-4 hover:underline"
+                  onClick={() => setMode(mode === "signin" ? "signup" : "signin")}
+                >
+                  {mode === "signin" ? "No tengo cuenta" : "Ya tengo cuenta"}
+                </button>
+              ) : (
+                <p className="mt-4 text-center text-xs text-muted-foreground">
+                  El registro de nuevas cuentas está desactivado por ahora.
+                </p>
+              )}
             </>
           )}
         </div>

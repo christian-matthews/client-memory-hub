@@ -1,0 +1,16 @@
+DELETE FROM public.ai_run_sources;
+DELETE FROM public.ai_proposals;
+DELETE FROM public.source_derivatives;
+DELETE FROM public.ingestion_items;
+DELETE FROM public.ai_runs;
+DELETE FROM public.topic_updates;
+DELETE FROM public.decisions;
+DELETE FROM public.commitments;
+DELETE FROM public.topic_sources;
+DELETE FROM public.topics;
+DELETE FROM public.sources;
+DELETE FROM public.client_contacts;
+DELETE FROM public.clients;
+DELETE FROM public.activity_events;
+DELETE FROM public.idempotency_keys;
+UPDATE public.ingestion_connections SET default_client_id = NULL WHERE default_client_id IS NOT NULL;

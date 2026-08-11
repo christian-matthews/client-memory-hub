@@ -33,6 +33,9 @@ export const Route = createFileRoute("/auth")({
   component: AuthPage,
 });
 
+// Registro público desactivado temporalmente desde el front.
+const SIGNUP_ENABLED = false;
+
 function AuthPage() {
   const { next } = Route.useSearch();
   // Preserved destination (e.g. an OAuth consent URL) must survive every path.
@@ -54,7 +57,7 @@ function AuthPage() {
     event.preventDefault();
     setPending(true);
     try {
-      if (mode === "signup") {
+      if (SIGNUP_ENABLED && mode === "signup") {
         const { data, error } = await supabase.auth.signUp({
           email,
           password,
@@ -153,13 +156,19 @@ function AuthPage() {
                 Continuar con Google
               </Button>
 
-              <button
-                type="button"
-                className="mt-4 w-full text-center text-xs text-muted-foreground underline-offset-4 hover:underline"
-                onClick={() => setMode(mode === "signin" ? "signup" : "signin")}
-              >
-                {mode === "signin" ? "No tengo cuenta" : "Ya tengo cuenta"}
-              </button>
+              {SIGNUP_ENABLED ? (
+                <button
+                  type="button"
+                  className="mt-4 w-full text-center text-xs text-muted-foreground underline-offset-4 hover:underline"
+                  onClick={() => setMode(mode === "signin" ? "signup" : "signin")}
+                >
+                  {mode === "signin" ? "No tengo cuenta" : "Ya tengo cuenta"}
+                </button>
+              ) : (
+                <p className="mt-4 text-center text-xs text-muted-foreground">
+                  El registro de nuevas cuentas está desactivado por ahora.
+                </p>
+              )}
             </>
           )}
         </div>

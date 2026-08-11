@@ -33,6 +33,9 @@ export const Route = createFileRoute("/auth")({
   component: AuthPage,
 });
 
+// Registro público desactivado temporalmente desde el front.
+const SIGNUP_ENABLED = false;
+
 function AuthPage() {
   const { next } = Route.useSearch();
   // Preserved destination (e.g. an OAuth consent URL) must survive every path.

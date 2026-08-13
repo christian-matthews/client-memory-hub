@@ -291,8 +291,8 @@ export async function createManualIngestionItem(ctx: DomainContext, raw: unknown
   const title = input.title?.trim() || null;
 
   const { data, error } = await ctx.db.rpc("create_manual_ingestion_item_v1", {
-    p_workspace_id: ctx.workspaceId,
-    p_client_id: input.clientId ?? null,
+    p_workspace_id: ctx.workspaceId as string,
+    p_client_id: (input.clientId ?? null) as string,
     p_title: title,
     p_transcript: transcript,
     p_content_hash: contentHash,
@@ -321,7 +321,7 @@ export async function createManualIngestionItem(ctx: DomainContext, raw: unknown
     item_id: string | null;
   };
 
-  return { itemId: result.item_id!, replayed: result.replied ?? false };
+  return { itemId: result.item_id!, replayed: result.replayed ?? false };
 }
 
 /* ------------------------------------------------------------------ */

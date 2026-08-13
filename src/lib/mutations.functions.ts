@@ -31,6 +31,7 @@ import {
   checkIngestionConnection,
   assignIngestionItemClient,
   discardIngestionItem,
+  createManualIngestionItem,
 } from "@/domain/ingestion/actions";
 import { processIngestionItem } from "@/domain/ai/meeting-processor";
 

@@ -31,11 +31,22 @@ function CommitmentsPage() {
     queryFn: async () => unwrap(await call({ data: { workspaceId } })),
   });
 
+  const grouped = React.useMemo(() => {
+    const map = new Map<string, typeof query.data.commitments>();
+    for (const c of query.data?.commitments ?? []) {
+      const key = (c as unknown as { clients?: { name?: string } }).clients?.name ?? "Sin empresa";
+      const list = map.get(key) ?? [];
+      list.push(c);
+      map.set(key, list);
+    }
+    return Array.from(map.entries()).sort((a, b) => a[0].localeCompare(b[0]));
+  }, [query.data?.commitments]);
+
   return (
     <AppShell>
       <SectionTitle
         title="Compromisos abiertos"
-        hint="Ordenados por fecha de vencimiento. Los nuestros vencidos elevan la atención del cliente."
+        hint="Agrupados por empresa. Ordenados por fecha de vencimiento dentro de cada grupo."
       />
       {query.isPending && !query.isError ? (
         <Skeleton className="h-32 w-full rounded-lg" />
@@ -43,23 +54,30 @@ function CommitmentsPage() {
         <p className="panel px-4 py-10 text-center text-sm text-destructive">
           No se pudieron cargar los compromisos: {(query.error as Error).message}
         </p>
-      ) : (query.data?.commitments ?? []).length === 0 ? (
+      ) : grouped.length === 0 ? (
         <p className="panel px-4 py-10 text-center text-sm text-muted-foreground">
           No hay compromisos abiertos.
         </p>
       ) : (
-        <ul className="grid gap-2">
-          {(query.data?.commitments ?? []).map((c) => (
-            <li key={c.id} className="panel flex flex-wrap items-center gap-2 p-3 text-sm">
-              <CommitmentStatusBadge status={c.status} />
-              <span>{c.description}</span>
-              <span className="ml-auto flex items-center gap-2 text-xs text-muted-foreground">
-                <PartyBadge party={c.responsible_party} />
-                <DueDate value={c.due_at} />
-              </span>
-            </li>
+        <div className="grid gap-6">
+          {grouped.map(([company, commitments]) => (
+            <section key={company} className="grid gap-2">
+              <h2 className="text-sm font-semibold text-muted-foreground">{company}</h2>
+              <ul className="grid gap-2">
+                {commitments.map((c) => (
+                  <li key={c.id} className="panel flex flex-wrap items-center gap-2 p-3 text-sm">
+                    <CommitmentStatusBadge status={c.status} />
+                    <span>{c.description}</span>
+                    <span className="ml-auto flex items-center gap-2 text-xs text-muted-foreground">
+                      <PartyBadge party={c.responsible_party} />
+                      <DueDate value={c.due_at} />
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            </section>
           ))}
-        </ul>
+        </div>
       )}
     </AppShell>
   );

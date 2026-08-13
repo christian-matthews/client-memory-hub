@@ -261,6 +261,114 @@ export async function discardIngestionItem(ctx: DomainContext, raw: unknown) {
 }
 
 /* ------------------------------------------------------------------ */
+/* Manual paste path (authenticated user)                            */
+/* ------------------------------------------------------------------ */
+
+export const manualIngestionInput = z.object({
+  title: z.string().trim().max(300).optional().nullable(),
+  transcript: z.string().min(1).max(200000).refine((value) => value.trim().length > 0, "transcript_required"),
+  clientId: uuidSchema.optional().nullable(),
+});
+
+/**
+ * Authenticated users can paste a transcript directly into the meeting inbox.
+ * This creates the same immutable evidence + inbox item as the MacWhisper webhook,
+ * but derives workspace from the session and lets the user pick a client up front.
+ */
+export async function createManualIngestionItem(ctx: DomainContext, raw: unknown) {
+  assertWritable(ctx);
+  assertAdmin(ctx);
+  const input = manualIngestionInput.parse(raw);
+
+  if (input.clientId) {
+    await assertClientExists(ctx, input.clientId);
+  }
+
+  const transcript = input.transcript.trim();
+  const contentHash = await sha256Hex(transcript);
+  const title = input.title?.trim() || `Reunión ${new Date().toLocaleString("es", { dateStyle: "short", timeStyle: "short" })}`;
+  const now = new Date().toISOString();
+
+  // Idempotency: same transcript in the same workspace is a replay.
+  const existing = await ctx.db
+    .from("ingestion_items")
+    .select("id")
+    .eq("workspace_id", ctx.workspaceId)
+    .eq("content_hash", contentHash)
+    .maybeSingle();
+  if (existing.error) throw new DomainError("internal", existing.error.message);
+  if (existing.data) {
+    return { itemId: existing.data.id, replayed: true };
+  }
+
+  const { data: source, error: sourceError } = await ctx.db
+    .from("sources")
+    .insert({
+      workspace_id: ctx.workspaceId,
+      client_id: input.clientId ?? null,
+      source_type: "meeting",
+      external_provider: "manual_paste",
+      title,
+      content_text: transcript,
+      occurred_at: now,
+      content_hash: contentHash,
+      created_by: ctx.actor.userId ?? null,
+      metadata: {
+        format: "plain_text",
+        received_via: "manual_paste",
+        has_audio: false,
+        has_structured_speakers: false,
+        has_timestamps: false,
+        speaker_identity_reliable: false,
+      } as never,
+    })
+    .select("id")
+    .single();
+  if (sourceError) throw new DomainError("internal", sourceError.message);
+
+  const { data: item, error: itemError } = await ctx.db
+    .from("ingestion_items")
+    .insert({
+      workspace_id: ctx.workspaceId,
+      connection_id: null,
+      source_id: source.id,
+      client_id: input.clientId ?? null,
+      status: input.clientId ? "ready" : "needs_client",
+      title,
+      content_hash: contentHash,
+      occurred_at: now,
+      participants: [],
+      metadata: {
+        format: "plain_text",
+        received_via: "manual_paste",
+        has_audio: false,
+        has_structured_speakers: false,
+        has_timestamps: false,
+        speaker_identity_reliable: false,
+      } as never,
+    })
+    .select(ingestionItemFields)
+    .single();
+  if (itemError) throw new DomainError("internal", itemError.message);
+
+  await recordActivity(ctx, {
+    eventType: "ingestion_item.received",
+    entityType: "ingestion_item",
+    entityId: item.id,
+    clientId: input.clientId ?? null,
+    description: `Transcripción pegada manualmente: ${title}`,
+    inputSummary: title,
+    metadata: {
+      provider: "manual_paste",
+      characters: transcript.length,
+      sourceId: source.id,
+    } as never,
+  });
+
+  return { item, replayed: false };
+}
+
+/* ------------------------------------------------------------------ */
 /* Inbound path (service role only, no user session)                   */
 /* ------------------------------------------------------------------ */
 

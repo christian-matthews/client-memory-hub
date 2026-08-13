@@ -311,7 +311,9 @@ export async function listOpenCommitments(ctx: DomainContext, raw?: unknown) {
 
   let query = ctx.db
     .from("commitments")
-    .select(`${commitmentRowFields}, topics(title), clients(name)`)
+    .select(
+      `${commitmentRowFields}, topics!commitments_topic_id_fkey(title), clients!commitments_client_id_fkey(name)`,
+    )
     .eq("workspace_id", ctx.workspaceId)
     .in("status", ["open", "overdue"])
     .order("due_at", { ascending: true, nullsFirst: false });

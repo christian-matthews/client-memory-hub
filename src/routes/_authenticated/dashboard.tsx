@@ -41,7 +41,7 @@ export const Route = createFileRoute("/_authenticated/dashboard")({
 function Dashboard() {
   const { workspaceId, isLoading: loadingWorkspace } = useActiveWorkspace();
   const call = useServerFn(fetchDashboard);
-  const [filter, setFilter] = useState<Filter>("needs_attention");
+  const [filter, setFilter] = useState<Filter>("all");
   const [search, setSearch] = useState("");
 
   const query = useQuery({

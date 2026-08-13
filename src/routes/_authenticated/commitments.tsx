@@ -32,13 +32,14 @@ function CommitmentsPage() {
     queryFn: async () => unwrap(await call({ data: { workspaceId } })),
   });
 
-  const grouped = React.useMemo(() => {
-    const map = new Map<string, typeof query.data.commitments>();
-    for (const c of query.data?.commitments ?? []) {
+  const grouped = useMemo(() => {
+    const list = query.data?.commitments ?? [];
+    const map = new Map<string, typeof list>();
+    for (const c of list) {
       const key = (c as unknown as { clients?: { name?: string } }).clients?.name ?? "Sin empresa";
-      const list = map.get(key) ?? [];
-      list.push(c);
-      map.set(key, list);
+      const group = map.get(key) ?? [];
+      group.push(c);
+      map.set(key, group);
     }
     return Array.from(map.entries()).sort((a, b) => a[0].localeCompare(b[0]));
   }, [query.data?.commitments]);

@@ -4,6 +4,7 @@ import { useServerFn } from "@tanstack/react-start";
 import { AppShell, SectionTitle } from "@/components/app-shell";
 import { Skeleton } from "@/components/ui/skeleton";
 import { IngestionConnections } from "@/components/ingestion-connections";
+import { ManualTranscriptPaste } from "@/components/manual-transcript-paste";
 import { MeetingInbox, type MeetingItem, type ProposalItem } from "@/components/meeting-inbox";
 import { fetchMeetings } from "@/lib/read.functions";
 import { unwrap, useActiveWorkspace } from "@/lib/use-workspace";

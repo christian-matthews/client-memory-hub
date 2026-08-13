@@ -1349,6 +1349,17 @@ export type Database = {
         }
         Returns: Json
       }
+      create_manual_ingestion_item_v1: {
+        Args: {
+          p_client_id: string
+          p_content_hash: string
+          p_metadata?: Json
+          p_title: string
+          p_transcript: string
+          p_workspace_id: string
+        }
+        Returns: Json
+      }
       create_workspace_with_owner: {
         Args: { p_name: string; p_slug?: string }
         Returns: string

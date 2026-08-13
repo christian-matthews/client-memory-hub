@@ -31,6 +31,7 @@ import {
   checkIngestionConnection,
   assignIngestionItemClient,
   discardIngestionItem,
+  createManualIngestionItem,
 } from "@/domain/ingestion/actions";
 import { processIngestionItem } from "@/domain/ai/meeting-processor";
 
@@ -208,6 +209,11 @@ export const checkIngestionConnectionFn = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((input: unknown) => mutationInput.parse(input))
   .handler(async ({ context, data }) => runMutation(checkIngestionConnection, context, data));
+
+export const createManualIngestionFn = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((input: unknown) => mutationInput.parse(input))
+  .handler(async ({ context, data }) => runMutation(createManualIngestionItem, context, data));
 
 export const editProposalFn = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])

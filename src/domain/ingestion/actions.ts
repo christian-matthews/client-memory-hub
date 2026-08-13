@@ -261,6 +261,70 @@ export async function discardIngestionItem(ctx: DomainContext, raw: unknown) {
 }
 
 /* ------------------------------------------------------------------ */
+/* Manual paste path (authenticated user)                            */
+/* ------------------------------------------------------------------ */
+
+export const manualIngestionInput = z.object({
+  title: z.string().trim().max(300).optional().nullable(),
+  transcript: z.string().min(1).max(200000).refine((value) => value.trim().length > 0, "transcript_required"),
+  clientId: uuidSchema.optional().nullable(),
+});
+
+/**
+ * Authenticated users can paste a transcript directly into the meeting inbox.
+ * This creates the same immutable evidence + inbox item as the MacWhisper webhook,
+ * but derives workspace from the session and lets the user pick a client up front.
+ * All writes happen in a single atomic RPC; the row-level audit is written by the
+ * database with the real auth identity, never by the caller.
+ */
+export async function createManualIngestionItem(ctx: DomainContext, raw: unknown) {
+  assertWritable(ctx);
+  assertAdmin(ctx);
+  const input = manualIngestionInput.parse(raw);
+
+  if (input.clientId) {
+    await assertClientExists(ctx, input.clientId);
+  }
+
+  const transcript = input.transcript.trim();
+  const contentHash = await sha256Hex(transcript);
+  const title = input.title?.trim() || null;
+
+  const { data, error } = await ctx.db.rpc("create_manual_ingestion_item_v1", {
+    p_workspace_id: ctx.workspaceId as string,
+    p_client_id: input.clientId as string,
+    p_title: title as string,
+    p_transcript: transcript,
+    p_content_hash: contentHash,
+    p_metadata: {
+      format: "plain_text",
+      received_via: "manual_paste",
+      has_audio: false,
+      has_structured_speakers: false,
+      has_timestamps: false,
+      speaker_identity_reliable: false,
+    } as never,
+  });
+
+  if (error) {
+    const rawMessage = error.message ?? "";
+    for (const [token, [code, message]] of Object.entries(RECEIVE_ERRORS)) {
+      if (rawMessage.includes(token)) {
+        throw new DomainError(code as never, message);
+      }
+    }
+    throw new DomainError("internal", rawMessage);
+  }
+
+  const result = (data ?? { replayed: false, item_id: null }) as {
+    replayed: boolean;
+    item_id: string | null;
+  };
+
+  return { itemId: result.item_id!, replayed: result.replayed ?? false };
+}
+
+/* ------------------------------------------------------------------ */
 /* Inbound path (service role only, no user session)                   */
 /* ------------------------------------------------------------------ */
 

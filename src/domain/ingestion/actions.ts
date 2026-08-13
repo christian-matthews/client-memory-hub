@@ -274,6 +274,8 @@ export const manualIngestionInput = z.object({
  * Authenticated users can paste a transcript directly into the meeting inbox.
  * This creates the same immutable evidence + inbox item as the MacWhisper webhook,
  * but derives workspace from the session and lets the user pick a client up front.
+ * All writes happen in a single atomic RPC; the row-level audit is written by the
+ * database with the real auth identity, never by the caller.
  */
 export async function createManualIngestionItem(ctx: DomainContext, raw: unknown) {
   assertWritable(ctx);
@@ -286,86 +288,40 @@ export async function createManualIngestionItem(ctx: DomainContext, raw: unknown
 
   const transcript = input.transcript.trim();
   const contentHash = await sha256Hex(transcript);
-  const title = input.title?.trim() || `Reunión ${new Date().toLocaleString("es", { dateStyle: "short", timeStyle: "short" })}`;
-  const now = new Date().toISOString();
+  const title = input.title?.trim() || null;
 
-  // Idempotency: same transcript in the same workspace is a replay.
-  const existing = await ctx.db
-    .from("ingestion_items")
-    .select("id")
-    .eq("workspace_id", ctx.workspaceId)
-    .eq("content_hash", contentHash)
-    .maybeSingle();
-  if (existing.error) throw new DomainError("internal", existing.error.message);
-  if (existing.data) {
-    return { itemId: existing.data.id, replayed: true };
-  }
-
-  const { data: source, error: sourceError } = await ctx.db
-    .from("sources")
-    .insert({
-      workspace_id: ctx.workspaceId,
-      client_id: input.clientId ?? null,
-      source_type: "meeting",
-      external_provider: "manual_paste",
-      title,
-      content_text: transcript,
-      occurred_at: now,
-      content_hash: contentHash,
-      created_by: ctx.actor.userId ?? null,
-      metadata: {
-        format: "plain_text",
-        received_via: "manual_paste",
-        has_audio: false,
-        has_structured_speakers: false,
-        has_timestamps: false,
-        speaker_identity_reliable: false,
-      } as never,
-    })
-    .select("id")
-    .single();
-  if (sourceError) throw new DomainError("internal", sourceError.message);
-
-  const { data: item, error: itemError } = await ctx.db
-    .from("ingestion_items")
-    .insert({
-      workspace_id: ctx.workspaceId,
-      connection_id: null,
-      source_id: source.id,
-      client_id: input.clientId ?? null,
-      status: input.clientId ? "ready" : "needs_client",
-      title,
-      content_hash: contentHash,
-      occurred_at: now,
-      participants: [],
-      metadata: {
-        format: "plain_text",
-        received_via: "manual_paste",
-        has_audio: false,
-        has_structured_speakers: false,
-        has_timestamps: false,
-        speaker_identity_reliable: false,
-      } as never,
-    })
-    .select(ingestionItemFields)
-    .single();
-  if (itemError) throw new DomainError("internal", itemError.message);
-
-  await recordActivity(ctx, {
-    eventType: "ingestion_item.received",
-    entityType: "ingestion_item",
-    entityId: item.id,
-    clientId: input.clientId ?? null,
-    description: `Transcripción pegada manualmente: ${title}`,
-    inputSummary: title,
-    metadata: {
-      provider: "manual_paste",
-      characters: transcript.length,
-      sourceId: source.id,
+  const { data, error } = await ctx.db.rpc("create_manual_ingestion_item_v1", {
+    p_workspace_id: ctx.workspaceId,
+    p_client_id: input.clientId ?? null,
+    p_title: title,
+    p_transcript: transcript,
+    p_content_hash: contentHash,
+    p_metadata: {
+      format: "plain_text",
+      received_via: "manual_paste",
+      has_audio: false,
+      has_structured_speakers: false,
+      has_timestamps: false,
+      speaker_identity_reliable: false,
     } as never,
   });
 
-  return { item, replayed: false };
+  if (error) {
+    const rawMessage = error.message ?? "";
+    for (const [token, [code, message]] of Object.entries(RECEIVE_ERRORS)) {
+      if (rawMessage.includes(token)) {
+        throw new DomainError(code as never, message);
+      }
+    }
+    throw new DomainError("internal", rawMessage);
+  }
+
+  const result = (data ?? { replayed: false, item_id: null }) as {
+    replayed: boolean;
+    item_id: string | null;
+  };
+
+  return { itemId: result.item_id!, replayed: result.replied ?? false };
 }
 
 /* ------------------------------------------------------------------ */

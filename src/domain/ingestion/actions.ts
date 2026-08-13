@@ -292,8 +292,8 @@ export async function createManualIngestionItem(ctx: DomainContext, raw: unknown
 
   const { data, error } = await ctx.db.rpc("create_manual_ingestion_item_v1", {
     p_workspace_id: ctx.workspaceId as string,
-    p_client_id: input.clientId as string,
-    p_title: title as string,
+    p_client_id: (input.clientId ?? null) as never,
+    p_title: (title ?? null) as never,
     p_transcript: transcript,
     p_content_hash: contentHash,
     p_metadata: {

@@ -37,8 +37,12 @@ function CommitmentsPage() {
         title="Compromisos abiertos"
         hint="Ordenados por fecha de vencimiento. Los nuestros vencidos elevan la atención del cliente."
       />
-      {query.isPending ? (
+      {query.isPending && !query.isError ? (
         <Skeleton className="h-32 w-full rounded-lg" />
+      ) : query.isError ? (
+        <p className="panel px-4 py-10 text-center text-sm text-destructive">
+          No se pudieron cargar los compromisos: {(query.error as Error).message}
+        </p>
       ) : (query.data?.commitments ?? []).length === 0 ? (
         <p className="panel px-4 py-10 text-center text-sm text-muted-foreground">
           No hay compromisos abiertos.

@@ -267,7 +267,9 @@ export async function getTopicTimeline(ctx: DomainContext, raw: unknown) {
       .order("created_at", { ascending: false }),
     ctx.db
       .from("topic_sources")
-      .select("source_id, relevance, created_at, sources(id, source_type, title, content_text, occurred_at)")
+      .select(
+        "source_id, relevance, created_at, sources!topic_sources_source_id_fkey(id, source_type, title, content_text, occurred_at)",
+      )
       .eq("workspace_id", ctx.workspaceId)
       .eq("topic_id", topicId),
     ctx.db
@@ -309,7 +311,9 @@ export async function listOpenCommitments(ctx: DomainContext, raw?: unknown) {
 
   let query = ctx.db
     .from("commitments")
-    .select(`${commitmentRowFields}, topics(title), clients(name)`)
+    .select(
+      `${commitmentRowFields}, topics!commitments_topic_id_fkey(title), clients!commitments_client_id_fkey(name)`,
+    )
     .eq("workspace_id", ctx.workspaceId)
     .in("status", ["open", "overdue"])
     .order("due_at", { ascending: true, nullsFirst: false });

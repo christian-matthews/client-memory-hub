@@ -25,7 +25,14 @@ export function useActiveWorkspace() {
   const query = useQuery({
     queryKey: ["workspaces"],
     queryFn: async () => unwrap(await call()),
+    // El espacio activo casi nunca cambia: cachearlo evita un round-trip
+    // encadenado antes de cada pantalla (era la causa de la lentitud al navegar).
+    staleTime: 10 * 60_000,
+    gcTime: 30 * 60_000,
+    refetchOnWindowFocus: false,
+    refetchOnMount: false,
   });
+
 
   const choose = useCallback((id: string) => {
     window.localStorage.setItem(STORAGE_KEY, id);

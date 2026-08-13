@@ -13,12 +13,13 @@ import { fetchDashboard } from "@/lib/read.functions";
 import { unwrap, useActiveWorkspace } from "@/lib/use-workspace";
 
 const FILTERS = [
+  { value: "all", label: "Todos" },
   { value: "needs_attention", label: "Requiere atención" },
   { value: "pending_us", label: "Nos toca" },
   { value: "waiting_client", label: "Esperando cliente" },
   { value: "stale", label: "Sin movimiento" },
-  { value: "all", label: "Todos" },
 ] as const;
+
 
 type Filter = (typeof FILTERS)[number]["value"];
 
@@ -40,7 +41,7 @@ export const Route = createFileRoute("/_authenticated/dashboard")({
 function Dashboard() {
   const { workspaceId, isLoading: loadingWorkspace } = useActiveWorkspace();
   const call = useServerFn(fetchDashboard);
-  const [filter, setFilter] = useState<Filter>("needs_attention");
+  const [filter, setFilter] = useState<Filter>("all");
   const [search, setSearch] = useState("");
 
   const query = useQuery({

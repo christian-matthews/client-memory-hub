@@ -10,6 +10,8 @@ import {
   type CommitmentStatus,
   type Party,
   type TopicStatus,
+  TOPIC_HEALTH_LABEL,
+  type TopicHealth,
 } from "@/domain/shared/vocabulary";
 
 const HEALTH_COLOR: Record<ClientHealth, string> = {
@@ -25,6 +27,23 @@ export function HealthDot({ health }: { health: ClientHealth }) {
       className={cn("inline-block size-2 shrink-0 rounded-full", HEALTH_COLOR[health])}
       title={HEALTH_LABEL[health]}
       aria-label={HEALTH_LABEL[health]}
+    />
+  );
+}
+
+const TOPIC_HEALTH_COLOR: Record<TopicHealth, string> = {
+  green: "bg-signal-ok",
+  yellow: "bg-signal-medium",
+  red: "bg-signal-high",
+  blue: "bg-signal-low",
+};
+
+export function TopicHealthDot({ health }: { health: TopicHealth }) {
+  return (
+    <span
+      className={cn("inline-block size-2.5 shrink-0 rounded-full", TOPIC_HEALTH_COLOR[health])}
+      title={TOPIC_HEALTH_LABEL[health]}
+      aria-label={TOPIC_HEALTH_LABEL[health]}
     />
   );
 }
@@ -69,6 +88,7 @@ const STATUS_TONE: Record<TopicStatus, string> = {
   waiting_client: "border-signal-low/40 bg-signal-low/10 text-signal-low",
   active: "border-accent/40 bg-accent/10 text-accent",
   monitoring: "border-border bg-secondary text-secondary-foreground",
+  paused: "border-border bg-muted text-muted-foreground",
   blocked: "border-signal-high/40 bg-signal-high/10 text-signal-high",
   resolved: "border-signal-ok/40 bg-signal-ok/10 text-signal-ok",
   archived: "border-border bg-muted text-muted-foreground",

@@ -1,4 +1,10 @@
-import { isOpenTopicStatus, type TopicStatus, type ResponsibleParty, type Party } from "../shared/vocabulary";
+import {
+  isOpenTopicStatus,
+  type TopicStatus,
+  type ResponsibleParty,
+  type Party,
+  type TopicHealth,
+} from "../shared/vocabulary";
 
 /**
  * Deterministic attention rules. No AI, no heuristics, no hidden state.
@@ -78,6 +84,8 @@ export function evaluateAttention(input: {
 
   for (const topic of input.topics) {
     if (!isOpenTopicStatus(topic.status)) continue;
+    // A paused topic is a deliberate decision, not something to nag about.
+    if (topic.status === "paused") continue;
 
     if (topic.status === "pending_us") {
       reasons.push(reason("topic_pending_us", `Tema pendiente nuestro: “${topic.title}”`, topic.id));
@@ -137,4 +145,31 @@ export function derivedHealth(reasons: AttentionReason[]): "good" | "attention" 
   if (reasons.some((r) => r.severity === "high")) return "risk";
   if (reasons.length > 0) return "attention";
   return "good";
+}
+
+
+/**
+ * Topic health, derived from state + who owes what + material movement.
+ * Deliberately not date-only: a blocked topic touched today is still red.
+ */
+export function topicHealth(
+  topic: AttentionTopicInput,
+  commitments: AttentionCommitmentInput[] = [],
+  now: Date = new Date(),
+): TopicHealth {
+  const openCommitments = commitments.filter(
+    (c) => c.status === "open" || c.status === "overdue",
+  );
+  const overdue =
+    openCommitments.some((c) => c.due_at && new Date(c.due_at).getTime() < now.getTime()) ||
+    Boolean(topic.next_step_due_at && new Date(topic.next_step_due_at).getTime() < now.getTime());
+
+  if (topic.status === "blocked") return "red";
+  if (overdue) return "red";
+  if (topic.status === "waiting_client") return "blue";
+  if (topic.next_step_owner === "client" || topic.next_step_owner === "third_party") return "blue";
+  if (topic.status === "paused" || topic.status === "monitoring") return "yellow";
+  if (!topic.next_step || topic.next_step.trim() === "") return "yellow";
+  if (daysWithoutRelevantMovement(topic, now) >= STALE_DAYS) return "yellow";
+  return "green";
 }

@@ -1089,6 +1089,7 @@ export type Database = {
           created_by: string | null
           id: string
           is_relevant: boolean
+          source_id: string | null
           topic_id: string
           update_type: Database["public"]["Enums"]["update_type"]
           workspace_id: string
@@ -1100,6 +1101,7 @@ export type Database = {
           created_by?: string | null
           id?: string
           is_relevant?: boolean
+          source_id?: string | null
           topic_id: string
           update_type?: Database["public"]["Enums"]["update_type"]
           workspace_id: string
@@ -1111,6 +1113,7 @@ export type Database = {
           created_by?: string | null
           id?: string
           is_relevant?: boolean
+          source_id?: string | null
           topic_id?: string
           update_type?: Database["public"]["Enums"]["update_type"]
           workspace_id?: string
@@ -1122,6 +1125,13 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "clients"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "topic_updates_source_ws_fkey"
+            columns: ["workspace_id", "source_id"]
+            isOneToOne: false
+            referencedRelation: "sources"
+            referencedColumns: ["workspace_id", "id"]
           },
           {
             foreignKeyName: "topic_updates_topic_id_fkey"
@@ -1157,7 +1167,9 @@ export type Database = {
         Row: {
           archived_at: string | null
           ball_with: Database["public"]["Enums"]["party"]
+          blockers: string | null
           client_id: string
+          client_owner_name: string | null
           created_at: string
           current_state: string
           description: string | null
@@ -1166,6 +1178,7 @@ export type Database = {
           next_step: string | null
           next_step_due_at: string | null
           next_step_owner: Database["public"]["Enums"]["party"]
+          owner_name: string | null
           owner_user_id: string | null
           priority: Database["public"]["Enums"]["priority_level"]
           resolved_at: string | null
@@ -1177,7 +1190,9 @@ export type Database = {
         Insert: {
           archived_at?: string | null
           ball_with?: Database["public"]["Enums"]["party"]
+          blockers?: string | null
           client_id: string
+          client_owner_name?: string | null
           created_at?: string
           current_state?: string
           description?: string | null
@@ -1186,6 +1201,7 @@ export type Database = {
           next_step?: string | null
           next_step_due_at?: string | null
           next_step_owner?: Database["public"]["Enums"]["party"]
+          owner_name?: string | null
           owner_user_id?: string | null
           priority?: Database["public"]["Enums"]["priority_level"]
           resolved_at?: string | null
@@ -1197,7 +1213,9 @@ export type Database = {
         Update: {
           archived_at?: string | null
           ball_with?: Database["public"]["Enums"]["party"]
+          blockers?: string | null
           client_id?: string
+          client_owner_name?: string | null
           created_at?: string
           current_state?: string
           description?: string | null
@@ -1206,6 +1224,7 @@ export type Database = {
           next_step?: string | null
           next_step_due_at?: string | null
           next_step_owner?: Database["public"]["Enums"]["party"]
+          owner_name?: string | null
           owner_user_id?: string | null
           priority?: Database["public"]["Enums"]["priority_level"]
           resolved_at?: string | null
@@ -1536,6 +1555,7 @@ export type Database = {
         | "monitoring"
         | "resolved"
         | "archived"
+        | "paused"
       update_type: "note" | "fact" | "decision" | "status_change" | "milestone"
       workspace_role: "owner" | "admin" | "member"
     }
@@ -1708,6 +1728,7 @@ export const Constants = {
         "monitoring",
         "resolved",
         "archived",
+        "paused",
       ],
       update_type: ["note", "fact", "decision", "status_change", "milestone"],
       workspace_role: ["owner", "admin", "member"],

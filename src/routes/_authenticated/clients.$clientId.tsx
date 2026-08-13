@@ -15,6 +15,7 @@ import {
   formatDate,
 } from "@/components/memory-bits";
 import { NewTopicDialog } from "@/components/new-topic-dialog";
+import { TopicCard } from "@/components/topic-card";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -116,6 +117,20 @@ function ClientPage() {
           </div>
         )}
       </header>
+
+      {data.radarTopics.length > 0 && (
+        <section className="mb-6">
+          <SectionTitle
+            title={`Temas activos · ${data.radarTopics.length}`}
+            hint="Cada tarjeta se entiende sin abrirla: estado, último avance, pendientes y próximo paso."
+          />
+          <div className="grid gap-2 lg:grid-cols-2">
+            {data.radarTopics.map((item) => (
+              <TopicCard key={item.topic.id} item={item} />
+            ))}
+          </div>
+        </section>
+      )}
 
       <Tabs defaultValue="topics">
         <TabsList>

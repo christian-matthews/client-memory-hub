@@ -9,7 +9,16 @@ import {
   type AttentionTopicInput,
   type AttentionCommitmentInput,
 } from "../attention/rules";
-import { OPEN_TOPIC_STATUSES, uuidSchema, type ClientHealth } from "../shared/vocabulary";
+import {
+  OPEN_TOPIC_STATUSES,
+  uuidSchema,
+  topicStatusSchema,
+  prioritySchema,
+  partySchema,
+  type ClientHealth,
+  type TopicHealth,
+} from "../shared/vocabulary";
+import { topicHealth } from "../attention/rules";
 import { topicRowFields } from "../topics/actions";
 import { commitmentRowFields } from "../commitments/actions";
 import { clientRowFields } from "../clients/actions";
@@ -249,7 +258,7 @@ export async function getTopicTimeline(ctx: DomainContext, raw: unknown) {
   const [updates, decisions, commitments, sourceLinks, proposals] = await Promise.all([
     ctx.db
       .from("topic_updates")
-      .select("id, update_type, content, is_relevant, created_by, created_at")
+      .select("id, update_type, content, is_relevant, created_by, created_at, source_id")
       .eq("workspace_id", ctx.workspaceId)
       .eq("topic_id", topicId)
       .order("created_at", { ascending: false }),
@@ -290,9 +299,72 @@ export async function getTopicTimeline(ctx: DomainContext, raw: unknown) {
     .eq("id", topic.client_id)
     .maybeSingle();
 
+  const updateRows = (updates.data ?? []) as Array<{
+    id: string;
+    update_type: string;
+    content: string;
+    is_relevant: boolean;
+    created_at: string;
+    source_id: string | null;
+  }>;
+  const decisionRows = (decisions.data ?? []) as Array<{
+    id: string;
+    description: string;
+    decided_at: string;
+    source_id: string | null;
+  }>;
+
+  // Resolve the origin of every entry so the history reads
+  // "date → source → what changed" without extra round trips per row.
+  const sourceIds = [
+    ...new Set(
+      [...updateRows, ...decisionRows]
+        .map((r) => r.source_id)
+        .filter((v): v is string => Boolean(v)),
+    ),
+  ];
+  const sourceIndex = new Map<string, { id: string; source_type: string; title: string | null }>();
+  if (sourceIds.length > 0) {
+    const { data: srcs } = await ctx.db
+      .from("sources")
+      .select("id, source_type, title")
+      .eq("workspace_id", ctx.workspaceId)
+      .in("id", sourceIds);
+    for (const src of srcs ?? []) sourceIndex.set(src.id, src as never);
+  }
+
+  const history: TopicHistoryEntry[] = [
+    ...updateRows.map((u) => ({
+      id: u.id,
+      at: u.created_at,
+      kind: (u.update_type === "decision" ? "decision" : "update") as TopicHistoryEntry["kind"],
+      isMaterial: u.is_relevant,
+      text: u.content,
+      updateType: u.update_type,
+      source: u.source_id ? (sourceIndex.get(u.source_id) ?? null) : null,
+    })),
+    ...decisionRows.map((d) => ({
+      id: d.id,
+      at: d.decided_at,
+      kind: "decision" as const,
+      isMaterial: true,
+      text: d.description,
+      updateType: "decision",
+      source: d.source_id ? (sourceIndex.get(d.source_id) ?? null) : null,
+    })),
+  ].sort((a, b) => (a.at < b.at ? 1 : -1));
+
+  const lastMaterial = history.find((h) => h.isMaterial) ?? null;
+
   return {
     topic,
     client,
+    history,
+    lastMaterial,
+    health: topicHealth(
+      topic as unknown as AttentionTopicInput,
+      (commitments.data ?? []) as unknown as AttentionCommitmentInput[],
+    ),
     updates: updates.data ?? [],
     decisions: decisions.data ?? [],
     commitments: commitments.data ?? [],
@@ -472,4 +544,121 @@ export async function listClientDecisions(ctx: DomainContext, raw: unknown) {
     .limit(limit);
   if (error) throw new DomainError("internal", error.message);
   return { decisions: data ?? [] };
+}
+
+
+export interface TopicHistoryEntry {
+  id: string;
+  at: string;
+  kind: "update" | "decision";
+  isMaterial: boolean;
+  text: string;
+  updateType: string;
+  source: { id: string; source_type: string; title: string | null } | null;
+}
+
+export interface RadarTopic {
+  topic: TopicRow & {
+    priority: string;
+    owner_name: string | null;
+    client_owner_name: string | null;
+    blockers: string | null;
+  };
+  clientId: string;
+  clientName: string;
+  health: TopicHealth;
+  daysWithoutMovement: number;
+  ourOpenCommitments: number;
+  clientOpenCommitments: number;
+  lastMaterial: { text: string; at: string } | null;
+  recentActivity: number;
+}
+
+export const listWorkspaceTopicsInput = z.object({
+  clientId: uuidSchema.optional(),
+  status: topicStatusSchema.optional(),
+  priority: prioritySchema.optional(),
+  nextStepOwner: partySchema.optional(),
+  includeClosed: z.boolean().default(false),
+  minDaysWithoutMovement: z.number().int().min(0).max(365).optional(),
+});
+
+/**
+ * Radar: every live topic in the workspace with its derived health and the
+ * minimum context needed to understand it without opening it.
+ */
+export async function listWorkspaceTopics(ctx: DomainContext, raw?: unknown) {
+  const input = listWorkspaceTopicsInput.parse(raw ?? {});
+  const now = new Date();
+
+  let topicsQuery = ctx.db
+    .from("topics")
+    .select(topicRowFields)
+    .eq("workspace_id", ctx.workspaceId);
+  if (!input.includeClosed) topicsQuery = topicsQuery.in("status", [...OPEN_TOPIC_STATUSES]);
+  if (input.clientId) topicsQuery = topicsQuery.eq("client_id", input.clientId);
+  if (input.status) topicsQuery = topicsQuery.eq("status", input.status);
+  if (input.priority) topicsQuery = topicsQuery.eq("priority", input.priority);
+  if (input.nextStepOwner) topicsQuery = topicsQuery.eq("next_step_owner", input.nextStepOwner);
+
+  const [topicsRes, clientsRes, commitmentsRes, updatesRes] = await Promise.all([
+    topicsQuery.order("last_relevant_change_at", { ascending: true, nullsFirst: true }),
+    ctx.db.from("clients").select("id, name").eq("workspace_id", ctx.workspaceId),
+    ctx.db
+      .from("commitments")
+      .select("id, topic_id, description, responsible_party, status, due_at")
+      .eq("workspace_id", ctx.workspaceId)
+      .in("status", ["open", "overdue"]),
+    ctx.db
+      .from("topic_updates")
+      .select("topic_id, content, created_at, is_relevant")
+      .eq("workspace_id", ctx.workspaceId)
+      .order("created_at", { ascending: false })
+      .limit(1000),
+  ]);
+
+  const firstError = [topicsRes, clientsRes, commitmentsRes, updatesRes].find((r) => r.error);
+  if (firstError?.error) throw new DomainError("internal", firstError.error.message);
+
+  const clientNames = new Map((clientsRes.data ?? []).map((c) => [c.id, c.name]));
+  const commitments = (commitmentsRes.data ?? []) as Array<
+    AttentionCommitmentInput & { topic_id: string }
+  >;
+  const updates = (updatesRes.data ?? []) as Array<{
+    topic_id: string;
+    content: string;
+    created_at: string;
+    is_relevant: boolean;
+  }>;
+  const monthAgo = now.getTime() - 30 * 86_400_000;
+
+  const items: RadarTopic[] = ((topicsRes.data ?? []) as unknown as RadarTopic["topic"][]).map(
+    (topic) => {
+      const topicCommitments = commitments.filter((c) => c.topic_id === topic.id);
+      const topicUpdates = updates.filter((u) => u.topic_id === topic.id);
+      const material = topicUpdates.find((u) => u.is_relevant);
+      return {
+        topic,
+        clientId: topic.client_id,
+        clientName: clientNames.get(topic.client_id) ?? "Cliente",
+        health: topicHealth(topic as unknown as AttentionTopicInput, topicCommitments, now),
+        daysWithoutMovement: daysWithoutRelevantMovement(
+          topic as unknown as AttentionTopicInput,
+          now,
+        ),
+        ourOpenCommitments: topicCommitments.filter((c) => c.responsible_party === "us").length,
+        clientOpenCommitments: topicCommitments.filter((c) => c.responsible_party !== "us").length,
+        lastMaterial: material ? { text: material.content, at: material.created_at } : null,
+        recentActivity: topicUpdates.filter((u) => new Date(u.created_at).getTime() >= monthAgo)
+          .length,
+      };
+    },
+  );
+
+  const filtered =
+    input.minDaysWithoutMovement === undefined
+      ? items
+      : items.filter((i) => i.daysWithoutMovement >= input.minDaysWithoutMovement!);
+
+  return { topics: filtered };
 }

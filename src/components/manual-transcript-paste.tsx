@@ -27,7 +27,7 @@ export function ManualTranscriptPaste({ clients, workspaceId, canManage }: Manua
   const [transcript, setTranscript] = useState("");
   const [clientId, setClientId] = useState("");
 
-  const create = useDomainMutation<{ title?: string; transcript: string; clientId?: string }>(
+  const create = useDomainMutation<{ title: string | undefined; transcript: string; clientId: string | undefined }>(
     createManualIngestionFn as never,
     {
       workspaceId,

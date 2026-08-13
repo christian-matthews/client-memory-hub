@@ -55,6 +55,13 @@ function MeetingsPage() {
       <SectionTitle
         title="Bandeja de reuniones"
         hint="La transcripción es evidencia inmutable. La IA solo propone: nada entra a la memoria del cliente sin tu aprobación explícita."
+        action={
+          <ManualTranscriptPaste
+            clients={data.clients}
+            workspaceId={workspaceId}
+            canManage={canManage}
+          />
+        }
       />
       <div className="grid gap-5 lg:grid-cols-[2fr_1fr]">
         <MeetingInbox

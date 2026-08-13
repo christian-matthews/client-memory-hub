@@ -267,7 +267,9 @@ export async function getTopicTimeline(ctx: DomainContext, raw: unknown) {
       .order("created_at", { ascending: false }),
     ctx.db
       .from("topic_sources")
-      .select("source_id, relevance, created_at, sources(id, source_type, title, content_text, occurred_at)")
+      .select(
+        "source_id, relevance, created_at, sources!topic_sources_source_id_fkey(id, source_type, title, content_text, occurred_at)",
+      )
       .eq("workspace_id", ctx.workspaceId)
       .eq("topic_id", topicId),
     ctx.db

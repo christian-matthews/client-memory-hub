@@ -14,6 +14,7 @@ export const topicStatusSchema = z.enum([
   "pending_us",
   "blocked",
   "monitoring",
+  "paused",
   "resolved",
   "archived",
 ]);
@@ -51,6 +52,7 @@ export const OPEN_TOPIC_STATUSES: readonly TopicStatus[] = [
   "pending_us",
   "blocked",
   "monitoring",
+  "paused",
 ];
 
 export const CLOSED_TOPIC_STATUSES: readonly TopicStatus[] = ["resolved", "archived"];
@@ -66,8 +68,23 @@ export const TOPIC_STATUS_LABEL: Record<TopicStatus, string> = {
   pending_us: "Pendiente nuestro",
   blocked: "Bloqueado",
   monitoring: "En observación",
+  paused: "En pausa",
   resolved: "Resuelto",
   archived: "Archivado",
+};
+
+/**
+ * Topic health is derived, never stored: green = advancing, yellow = no recent
+ * material movement, red = blocked or overdue, blue = waiting on someone else.
+ */
+export const topicHealthSchema = z.enum(["green", "yellow", "red", "blue"]);
+export type TopicHealth = z.infer<typeof topicHealthSchema>;
+
+export const TOPIC_HEALTH_LABEL: Record<TopicHealth, string> = {
+  green: "Avanzando",
+  yellow: "Sin cambios recientes",
+  red: "Bloqueado o atrasado",
+  blue: "Esperando a un tercero",
 };
 
 export const PARTY_LABEL: Record<Party, string> = {

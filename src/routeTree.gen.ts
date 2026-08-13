@@ -22,6 +22,7 @@ import { Route as AuthenticatedSettingsRouteImport } from './routes/_authenticat
 import { Route as DotlovableOauthConsentRouteImport } from './routes/[.]lovable.oauth.consent'
 import { Route as Char91DotmcpChar93InvokeToolToolRouteImport } from './routes/[.mcp]/invoke-tool/$tool'
 import { Route as AuthenticatedClientsClientIdRouteImport } from './routes/_authenticated/clients.$clientId'
+import { Route as AuthenticatedTopicsIndexRouteImport } from './routes/_authenticated/topics.index'
 import { Route as AuthenticatedTopicsTopicIdRouteImport } from './routes/_authenticated/topics.$topicId'
 import { Route as ApiPublicMcpRouteImport } from './routes/api/public/mcp'
 import { Route as ApiPublicIngestMacwhisperConnectionIdSecretRouteImport } from './routes/api/public/ingest/macwhisper/$connectionId/$secret'
@@ -95,6 +96,12 @@ const AuthenticatedClientsClientIdRoute =
     path: '/clients/$clientId',
     getParentRoute: () => AuthenticatedRouteRoute,
   } as any)
+const AuthenticatedTopicsIndexRoute =
+  AuthenticatedTopicsIndexRouteImport.update({
+    id: '/topics/',
+    path: '/topics/',
+    getParentRoute: () => AuthenticatedRouteRoute,
+  } as any)
 const AuthenticatedTopicsTopicIdRoute =
   AuthenticatedTopicsTopicIdRouteImport.update({
     id: '/topics/$topicId',
@@ -128,6 +135,7 @@ export interface FileRoutesByFullPath {
   '/clients/$clientId': typeof AuthenticatedClientsClientIdRoute
   '/topics/$topicId': typeof AuthenticatedTopicsTopicIdRoute
   '/api/public/mcp': typeof ApiPublicMcpRoute
+  '/topics/': typeof AuthenticatedTopicsIndexRoute
   '/api/public/ingest/macwhisper/$connectionId/$secret': typeof ApiPublicIngestMacwhisperConnectionIdSecretRoute
 }
 export interface FileRoutesByTo {
@@ -145,6 +153,7 @@ export interface FileRoutesByTo {
   '/clients/$clientId': typeof AuthenticatedClientsClientIdRoute
   '/topics/$topicId': typeof AuthenticatedTopicsTopicIdRoute
   '/api/public/mcp': typeof ApiPublicMcpRoute
+  '/topics': typeof AuthenticatedTopicsIndexRoute
   '/api/public/ingest/macwhisper/$connectionId/$secret': typeof ApiPublicIngestMacwhisperConnectionIdSecretRoute
 }
 export interface FileRoutesById {
@@ -164,6 +173,7 @@ export interface FileRoutesById {
   '/_authenticated/clients/$clientId': typeof AuthenticatedClientsClientIdRoute
   '/_authenticated/topics/$topicId': typeof AuthenticatedTopicsTopicIdRoute
   '/api/public/mcp': typeof ApiPublicMcpRoute
+  '/_authenticated/topics/': typeof AuthenticatedTopicsIndexRoute
   '/api/public/ingest/macwhisper/$connectionId/$secret': typeof ApiPublicIngestMacwhisperConnectionIdSecretRoute
 }
 export interface FileRouteTypes {
@@ -183,6 +193,7 @@ export interface FileRouteTypes {
     | '/clients/$clientId'
     | '/topics/$topicId'
     | '/api/public/mcp'
+    | '/topics/'
     | '/api/public/ingest/macwhisper/$connectionId/$secret'
   fileRoutesByTo: FileRoutesByTo
   to:
@@ -200,6 +211,7 @@ export interface FileRouteTypes {
     | '/clients/$clientId'
     | '/topics/$topicId'
     | '/api/public/mcp'
+    | '/topics'
     | '/api/public/ingest/macwhisper/$connectionId/$secret'
   id:
     | '__root__'
@@ -218,6 +230,7 @@ export interface FileRouteTypes {
     | '/_authenticated/clients/$clientId'
     | '/_authenticated/topics/$topicId'
     | '/api/public/mcp'
+    | '/_authenticated/topics/'
     | '/api/public/ingest/macwhisper/$connectionId/$secret'
   fileRoutesById: FileRoutesById
 }
@@ -327,6 +340,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedClientsClientIdRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
+    '/_authenticated/topics/': {
+      id: '/_authenticated/topics/'
+      path: '/topics'
+      fullPath: '/topics/'
+      preLoaderRoute: typeof AuthenticatedTopicsIndexRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
     '/_authenticated/topics/$topicId': {
       id: '/_authenticated/topics/$topicId'
       path: '/topics/$topicId'
@@ -358,6 +378,7 @@ interface AuthenticatedRouteRouteChildren {
   AuthenticatedSettingsRoute: typeof AuthenticatedSettingsRoute
   AuthenticatedClientsClientIdRoute: typeof AuthenticatedClientsClientIdRoute
   AuthenticatedTopicsTopicIdRoute: typeof AuthenticatedTopicsTopicIdRoute
+  AuthenticatedTopicsIndexRoute: typeof AuthenticatedTopicsIndexRoute
 }
 
 const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
@@ -367,6 +388,7 @@ const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
   AuthenticatedSettingsRoute: AuthenticatedSettingsRoute,
   AuthenticatedClientsClientIdRoute: AuthenticatedClientsClientIdRoute,
   AuthenticatedTopicsTopicIdRoute: AuthenticatedTopicsTopicIdRoute,
+  AuthenticatedTopicsIndexRoute: AuthenticatedTopicsIndexRoute,
 }
 
 const AuthenticatedRouteRouteWithChildren =

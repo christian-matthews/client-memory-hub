@@ -16,7 +16,7 @@ import {
 } from "../shared/vocabulary";
 
 export const topicRowFields =
-  "id, workspace_id, client_id, title, description, status, priority, owner_user_id, ball_with, current_state, next_step, next_step_owner, next_step_due_at, last_relevant_change_at, created_at, updated_at, resolved_at, archived_at";
+  "id, workspace_id, client_id, title, description, status, priority, owner_user_id, owner_name, client_owner_name, blockers, ball_with, current_state, next_step, next_step_owner, next_step_due_at, last_relevant_change_at, created_at, updated_at, resolved_at, archived_at";
 
 export async function fetchTopic(ctx: DomainContext, topicId: string) {
   const { data, error } = await ctx.db
@@ -73,6 +73,9 @@ export const updateTopicStateInput = z.object({
   ballWith: partySchema.optional(),
   currentState: z.string().trim().max(2000).optional(),
   priority: prioritySchema.optional(),
+  ownerName: z.string().trim().max(160).nullable().optional(),
+  clientOwnerName: z.string().trim().max(160).nullable().optional(),
+  blockers: z.string().trim().max(2000).nullable().optional(),
 });
 
 export async function updateTopicState(ctx: DomainContext, raw: unknown) {
@@ -100,6 +103,18 @@ export async function updateTopicState(ctx: DomainContext, raw: unknown) {
   if (input.priority && input.priority !== topic.priority) {
     patch["priority"] = input.priority;
     changes.push(`prioridad → ${input.priority}`);
+  }
+  if (input.ownerName !== undefined && input.ownerName !== topic.owner_name) {
+    patch["owner_name"] = input.ownerName;
+    changes.push("responsable interno actualizado");
+  }
+  if (input.clientOwnerName !== undefined && input.clientOwnerName !== topic.client_owner_name) {
+    patch["client_owner_name"] = input.clientOwnerName;
+    changes.push("contraparte del cliente actualizada");
+  }
+  if (input.blockers !== undefined && input.blockers !== topic.blockers) {
+    patch["blockers"] = input.blockers;
+    changes.push(input.blockers ? "bloqueos actualizados" : "bloqueos despejados");
   }
   if (changes.length === 0) return { topic };
 

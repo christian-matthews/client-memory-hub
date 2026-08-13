@@ -13,6 +13,8 @@ import {
   listClientSources,
   listClientTopics,
   listOpenCommitments,
+  listWorkspaceTopics,
+  listClients,
   getClientActivity,
   searchClientMemory,
 } from "@/domain/queries/read";
@@ -72,13 +74,14 @@ export const fetchClientPage = createServerFn({ method: "POST" })
   .handler(async ({ context, data }) =>
     run(async () => {
       const ctx = await domainCtx(context, data.workspaceId);
-      const [brief, contacts, sources, decisions, activity, closed] = await Promise.all([
+      const [brief, contacts, sources, decisions, activity, closed, radar] = await Promise.all([
         getClientBrief(ctx, { clientId: data.clientId }),
         listClientContacts(ctx, { clientId: data.clientId }),
         listClientSources(ctx, { clientId: data.clientId, limit: 8 }),
         listClientDecisions(ctx, { clientId: data.clientId, limit: 8 }),
         getClientActivity(ctx, { clientId: data.clientId, limit: 30 }),
         listClientTopics(ctx, { clientId: data.clientId, includeClosed: true }),
+        listWorkspaceTopics(ctx, { clientId: data.clientId }),
       ]);
       return {
         workspaceId: ctx.workspaceId,
@@ -88,6 +91,7 @@ export const fetchClientPage = createServerFn({ method: "POST" })
         recentDecisions: decisions.decisions,
         activity: activity.events,
         allTopics: closed.topics,
+        radarTopics: radar.topics,
       };
     }),
   );
@@ -106,6 +110,40 @@ export const fetchTopicPage = createServerFn({ method: "POST" })
         limit: 20,
       });
       return { workspaceId: ctx.workspaceId, ...timeline, clientSources: sources.sources };
+    }),
+  );
+
+export const fetchTopicsRadar = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((input: unknown) =>
+    withWorkspace
+      .extend({
+        clientId: z.string().uuid().optional(),
+        status: z.string().optional(),
+        priority: z.string().optional(),
+        nextStepOwner: z.string().optional(),
+        includeClosed: z.boolean().optional(),
+        minDaysWithoutMovement: z.number().int().min(0).max(365).optional(),
+      })
+      .parse(input ?? {}),
+  )
+  .handler(async ({ context, data }) =>
+    run(async () => {
+      const ctx = await domainCtx(context, data.workspaceId);
+      const [radar, clients] = await Promise.all([
+        listWorkspaceTopics(ctx, {
+          ...(data.clientId ? { clientId: data.clientId } : {}),
+          ...(data.status ? { status: data.status } : {}),
+          ...(data.priority ? { priority: data.priority } : {}),
+          ...(data.nextStepOwner ? { nextStepOwner: data.nextStepOwner } : {}),
+          includeClosed: data.includeClosed ?? false,
+          ...(data.minDaysWithoutMovement !== undefined
+            ? { minDaysWithoutMovement: data.minDaysWithoutMovement }
+            : {}),
+        }),
+        listClients(ctx),
+      ]);
+      return { workspaceId: ctx.workspaceId, ...radar, clients: clients.clients };
     }),
   );
 

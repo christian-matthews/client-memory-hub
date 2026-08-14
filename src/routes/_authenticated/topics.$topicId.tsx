@@ -31,8 +31,10 @@ import { fetchTopicPage } from "@/lib/read.functions";
 import {
   addTopicUpdateFn,
   completeCommitmentFn,
+  mergeTopicsFn,
   updateTopicStateFn,
 } from "@/lib/mutations.functions";
+
 import { unwrap, useActiveWorkspace, useDomainMutation } from "@/lib/use-workspace";
 import {
   PARTY_LABEL,

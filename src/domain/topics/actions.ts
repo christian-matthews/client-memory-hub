@@ -16,7 +16,22 @@ import {
 } from "../shared/vocabulary";
 
 export const topicRowFields =
-  "id, workspace_id, client_id, title, description, status, priority, owner_user_id, owner_name, client_owner_name, blockers, ball_with, current_state, next_step, next_step_owner, next_step_due_at, last_relevant_change_at, created_at, updated_at, resolved_at, archived_at";
+  "id, workspace_id, client_id, title, description, status, priority, owner_user_id, owner_name, client_owner_name, blockers, ball_with, current_state, next_step, next_step_owner, next_step_due_at, last_relevant_change_at, created_at, updated_at, resolved_at, archived_at, normalized_title, merged_into_id, merged_at";
+
+/**
+ * Same normalization the database generated column applies: lowercase, accents
+ * folded, punctuation collapsed to single spaces. Used to detect duplicates
+ * BEFORE inserting, so the AI and the UI converge on one live topic per asunto.
+ */
+export function normalizeTopicTitle(title: string): string {
+  return title
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim();
+}
+
 
 export async function fetchTopic(ctx: DomainContext, topicId: string) {
   const { data, error } = await ctx.db

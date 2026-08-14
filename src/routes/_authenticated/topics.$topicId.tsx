@@ -72,6 +72,8 @@ function TopicPage() {
   const addUpdate = useServerFn(addTopicUpdateFn);
   const complete = useServerFn(completeCommitmentFn);
   const updateState = useServerFn(updateTopicStateFn);
+  const merge = useServerFn(mergeTopicsFn);
+
 
   const query = useQuery({
     queryKey: ["topic", workspaceId, topicId],

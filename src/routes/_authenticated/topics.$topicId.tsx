@@ -171,6 +171,21 @@ function TopicPage() {
         </Link>
       )}
 
+      {topic.merged_into_id && (
+        <div className="panel mb-4 flex flex-wrap items-center gap-2 border-signal-high/40 bg-signal-high/10 p-3 text-sm">
+          <span>Este tema fue fusionado en otro. Su historia vive allí.</span>
+          <Link
+            to="/topics/$topicId"
+            params={{ topicId: topic.merged_into_id }}
+            className="font-medium underline"
+          >
+            Ir al tema vigente
+          </Link>
+        </div>
+      )}
+
+
+
       {/* Executive header: answers "¿en qué va este tema?" in one glance. */}
       <header className="panel mb-5 p-5">
         <div className="flex flex-wrap items-center gap-2">

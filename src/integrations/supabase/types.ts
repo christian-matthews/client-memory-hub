@@ -1175,9 +1175,12 @@ export type Database = {
           description: string | null
           id: string
           last_relevant_change_at: string | null
+          merged_at: string | null
+          merged_into_id: string | null
           next_step: string | null
           next_step_due_at: string | null
           next_step_owner: Database["public"]["Enums"]["party"]
+          normalized_title: string | null
           owner_name: string | null
           owner_user_id: string | null
           priority: Database["public"]["Enums"]["priority_level"]
@@ -1198,9 +1201,12 @@ export type Database = {
           description?: string | null
           id?: string
           last_relevant_change_at?: string | null
+          merged_at?: string | null
+          merged_into_id?: string | null
           next_step?: string | null
           next_step_due_at?: string | null
           next_step_owner?: Database["public"]["Enums"]["party"]
+          normalized_title?: string | null
           owner_name?: string | null
           owner_user_id?: string | null
           priority?: Database["public"]["Enums"]["priority_level"]
@@ -1221,9 +1227,12 @@ export type Database = {
           description?: string | null
           id?: string
           last_relevant_change_at?: string | null
+          merged_at?: string | null
+          merged_into_id?: string | null
           next_step?: string | null
           next_step_due_at?: string | null
           next_step_owner?: Database["public"]["Enums"]["party"]
+          normalized_title?: string | null
           owner_name?: string | null
           owner_user_id?: string | null
           priority?: Database["public"]["Enums"]["priority_level"]
@@ -1240,6 +1249,13 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "clients"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "topics_merged_into_fkey"
+            columns: ["workspace_id", "merged_into_id"]
+            isOneToOne: false
+            referencedRelation: "topics"
+            referencedColumns: ["workspace_id", "id"]
           },
           {
             foreignKeyName: "topics_workspace_id_fkey"
@@ -1482,6 +1498,14 @@ export type Database = {
       }
       is_workspace_admin: { Args: { _workspace_id: string }; Returns: boolean }
       is_workspace_member: { Args: { _workspace_id: string }; Returns: boolean }
+      merge_topics_v1: {
+        Args: {
+          p_source_topic_id: string
+          p_target_topic_id: string
+          p_workspace_id: string
+        }
+        Returns: Json
+      }
       receive_macwhisper_transcript_v1: {
         Args: {
           p_connection_id: string

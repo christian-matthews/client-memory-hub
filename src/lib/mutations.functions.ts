@@ -15,7 +15,9 @@ import {
   setTopicNextStep as setTopicNextStepAction,
   addTopicUpdate as addTopicUpdateAction,
   recordDecision as recordDecisionAction,
+  mergeTopics as mergeTopicsAction,
 } from "@/domain/topics/actions";
+
 import {
   createCommitment as createCommitmentAction,
   completeCommitment as completeCommitmentAction,

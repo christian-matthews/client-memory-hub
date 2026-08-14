@@ -103,10 +103,16 @@ export const addTopicUpdateFn = createServerFn({ method: "POST" })
   .inputValidator((input: unknown) => mutationInput.parse(input))
   .handler(async ({ context, data }) => runMutation(addTopicUpdateAction, context, data));
 
+export const mergeTopicsFn = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((input: unknown) => mutationInput.parse(input))
+  .handler(async ({ context, data }) => runMutation(mergeTopicsAction, context, data));
+
 export const recordDecisionFn = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((input: unknown) => mutationInput.parse(input))
   .handler(async ({ context, data }) => runMutation(recordDecisionAction, context, data));
+
 
 export const createCommitmentFn = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])

@@ -121,8 +121,19 @@ function TopicPage() {
     );
   }
 
-  const { topic, client, history, lastMaterial, health, decisions, commitments, sources, clientSources } =
-    query.data;
+  const {
+    topic,
+    client,
+    history,
+    lastMaterial,
+    health,
+    decisions,
+    commitments,
+    sources,
+    clientSources,
+    siblingTopics,
+  } = query.data;
+
 
   const openCommitments = commitments.filter((c) => c.status === "open" || c.status === "overdue");
   const ourPending = openCommitments.filter((c) => c.responsible_party === "us");

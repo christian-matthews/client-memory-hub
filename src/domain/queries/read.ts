@@ -495,8 +495,10 @@ export async function listClientTopics(ctx: DomainContext, raw: unknown) {
     .select(topicRowFields)
     .eq("workspace_id", ctx.workspaceId)
     .eq("client_id", clientId)
+    .is("merged_into_id", null)
     .order("created_at", { ascending: false });
   if (!includeClosed) query = query.in("status", [...OPEN_TOPIC_STATUSES]);
+
 
   const { data, error } = await query;
   if (error) throw new DomainError("internal", error.message);
@@ -594,8 +596,10 @@ export async function listWorkspaceTopics(ctx: DomainContext, raw?: unknown) {
   let topicsQuery = ctx.db
     .from("topics")
     .select(topicRowFields)
-    .eq("workspace_id", ctx.workspaceId);
+    .eq("workspace_id", ctx.workspaceId)
+    .is("merged_into_id", null);
   if (!input.includeClosed) topicsQuery = topicsQuery.in("status", [...OPEN_TOPIC_STATUSES]);
+
   if (input.clientId) topicsQuery = topicsQuery.eq("client_id", input.clientId);
   if (input.status) topicsQuery = topicsQuery.eq("status", input.status);
   if (input.priority) topicsQuery = topicsQuery.eq("priority", input.priority);

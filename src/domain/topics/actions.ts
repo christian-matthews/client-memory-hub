@@ -16,7 +16,22 @@ import {
 } from "../shared/vocabulary";
 
 export const topicRowFields =
-  "id, workspace_id, client_id, title, description, status, priority, owner_user_id, owner_name, client_owner_name, blockers, ball_with, current_state, next_step, next_step_owner, next_step_due_at, last_relevant_change_at, created_at, updated_at, resolved_at, archived_at";
+  "id, workspace_id, client_id, title, description, status, priority, owner_user_id, owner_name, client_owner_name, blockers, ball_with, current_state, next_step, next_step_owner, next_step_due_at, last_relevant_change_at, created_at, updated_at, resolved_at, archived_at, normalized_title, merged_into_id, merged_at";
+
+/**
+ * Same normalization the database generated column applies: lowercase, accents
+ * folded, punctuation collapsed to single spaces. Used to detect duplicates
+ * BEFORE inserting, so the AI and the UI converge on one live topic per asunto.
+ */
+export function normalizeTopicTitle(title: string): string {
+  return title
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim();
+}
+
 
 export async function fetchTopic(ctx: DomainContext, topicId: string) {
   const { data, error } = await ctx.db
@@ -44,9 +59,29 @@ export const createTopicInput = z.object({
   idempotencyKey: idempotencyKeySchema,
 });
 
-/** Single transaction: idempotency + client validation + insert + audit. */
+/**
+ * Single transaction: idempotency + client validation + insert + audit.
+ * Duplicate prevention comes first: if the client already has a LIVE topic with
+ * the same normalized title, that topic is returned instead of creating a twin.
+ */
 export async function createTopic(ctx: DomainContext, raw: unknown) {
   const input = createTopicInput.parse(raw);
+
+  const normalized = normalizeTopicTitle(input.title);
+  if (normalized) {
+    const { data: twin, error } = await ctx.db
+      .from("topics")
+      .select(topicRowFields)
+      .eq("workspace_id", ctx.workspaceId)
+      .eq("client_id", input.clientId)
+      .eq("normalized_title", normalized)
+      .is("merged_into_id", null)
+      .is("archived_at", null)
+      .maybeSingle();
+    if (error) throw new DomainError("internal", error.message);
+    if (twin) return { topic: twin, replayed: true, deduplicated: true };
+  }
+
   const { topicId, replayed } = await domainWrite<{ topicId: string }>(
     ctx,
     "create_topic",
@@ -64,8 +99,45 @@ export async function createTopic(ctx: DomainContext, raw: unknown) {
     },
     input.idempotencyKey ?? null,
   );
-  return { topic: await fetchTopic(ctx, topicId), replayed };
+  return { topic: await fetchTopic(ctx, topicId), replayed, deduplicated: false };
 }
+
+export const mergeTopicsInput = z.object({
+  sourceTopicId: uuidSchema,
+  targetTopicId: uuidSchema,
+});
+
+/**
+ * Fusion of two topics of the same client in ONE transaction: updates,
+ * decisions, commitments, evidence and pending proposals move to the target;
+ * the source stays archived pointing at the target. Nothing is deleted.
+ */
+export async function mergeTopics(ctx: DomainContext, raw: unknown) {
+  assertWritable(ctx);
+  const input = mergeTopicsInput.parse(raw);
+
+  const { data, error } = await ctx.db.rpc("merge_topics_v1", {
+    p_workspace_id: ctx.workspaceId,
+    p_source_topic_id: input.sourceTopicId,
+    p_target_topic_id: input.targetTopicId,
+  });
+  if (error) {
+    const message = error.message ?? "";
+    if (message.includes("same_topic")) throw new DomainError("invalid_input", "Es el mismo tema");
+    if (message.includes("different_client"))
+      throw new DomainError("invalid_input", "Los temas pertenecen a clientes distintos");
+    if (message.includes("already_merged"))
+      throw new DomainError("invalid_input", "Uno de los temas ya fue fusionado");
+    if (message.includes("topic_not_found")) throw notFound("Tema no encontrado");
+    throw new DomainError("internal", message);
+  }
+
+  return {
+    ...(data as Record<string, unknown>),
+    topic: await fetchTopic(ctx, input.targetTopicId),
+  };
+}
+
 
 export const updateTopicStateInput = z.object({
   topicId: uuidSchema,

@@ -105,13 +105,22 @@ export const fetchTopicPage = createServerFn({ method: "POST" })
     run(async () => {
       const ctx = await domainCtx(context, data.workspaceId);
       const timeline = await getTopicTimeline(ctx, { topicId: data.topicId });
-      const sources = await listClientSources(ctx, {
-        clientId: timeline.topic.client_id,
-        limit: 20,
-      });
-      return { workspaceId: ctx.workspaceId, ...timeline, clientSources: sources.sources };
+      const [sources, siblings] = await Promise.all([
+        listClientSources(ctx, { clientId: timeline.topic.client_id, limit: 20 }),
+        // Candidates for merging: every other live topic of the same client.
+        listClientTopics(ctx, { clientId: timeline.topic.client_id, includeClosed: false }),
+      ]);
+      return {
+        workspaceId: ctx.workspaceId,
+        ...timeline,
+        clientSources: sources.sources,
+        siblingTopics: siblings.topics
+          .filter((t) => t.id !== data.topicId)
+          .map((t) => ({ id: t.id, title: t.title })),
+      };
     }),
   );
+
 
 export const fetchTopicsRadar = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])

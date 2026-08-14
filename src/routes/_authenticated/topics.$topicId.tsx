@@ -431,7 +431,7 @@ function TopicPage() {
           </form>
         </TabsContent>
 
-        <TabsContent value="settings" className="mt-4">
+        <TabsContent value="settings" className="mt-4 space-y-4">
           <TopicMetaForm
             key={`${topic.owner_name}-${topic.client_owner_name}-${topic.blockers}`}
             topicId={topicId}
@@ -442,7 +442,48 @@ function TopicPage() {
             pending={metaMutation.isPending}
             onSubmit={(payload) => metaMutation.mutate({ topicId, ...payload })}
           />
+
+          <section className="panel max-w-2xl space-y-3 p-4">
+            <SectionTitle
+              title="Fusionar un tema duplicado aquí"
+              hint="Historia, decisiones, compromisos y evidencia se mueven a este tema. El duplicado queda archivado apuntando aquí; nada se borra."
+              className="mb-0"
+            />
+            {siblingTopics.length === 0 ? (
+              <Muted>Este cliente no tiene otros temas vivos.</Muted>
+            ) : (
+              <div className="flex flex-wrap items-end gap-3">
+                <div className="min-w-56 space-y-1.5">
+                  <Label>Tema duplicado</Label>
+                  <Select value={mergeSource} onValueChange={setMergeSource}>
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="none">Elegir tema…</SelectItem>
+                      {siblingTopics.map((t) => (
+                        <SelectItem key={t.id} value={t.id}>
+                          {t.title.slice(0, 70)}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <Button
+                  variant="secondary"
+                  disabled={mergeSource === "none" || mergeMutation.isPending}
+                  onClick={() => {
+                    mergeMutation.mutate({ sourceTopicId: mergeSource, targetTopicId: topicId });
+                    setMergeSource("none");
+                  }}
+                >
+                  Fusionar aquí
+                </Button>
+              </div>
+            )}
+          </section>
         </TabsContent>
+
       </Tabs>
     </AppShell>
   );

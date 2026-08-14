@@ -495,8 +495,10 @@ export async function listClientTopics(ctx: DomainContext, raw: unknown) {
     .select(topicRowFields)
     .eq("workspace_id", ctx.workspaceId)
     .eq("client_id", clientId)
+    .is("merged_into_id", null)
     .order("created_at", { ascending: false });
   if (!includeClosed) query = query.in("status", [...OPEN_TOPIC_STATUSES]);
+
 
   const { data, error } = await query;
   if (error) throw new DomainError("internal", error.message);

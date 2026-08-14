@@ -97,6 +97,11 @@ function TopicPage() {
     successMessage: "Tema actualizado",
     invalidate,
   });
+  const mergeMutation = useDomainMutation<{ sourceTopicId: string; targetTopicId: string }>(merge, {
+    workspaceId,
+    successMessage: "Temas fusionados",
+    invalidate,
+  });
 
   const [content, setContent] = useState("");
   const [status, setStatus] = useState<TopicStatus | "keep">("keep");
@@ -105,6 +110,8 @@ function TopicPage() {
   const [dueAt, setDueAt] = useState("");
   const [sourceId, setSourceId] = useState<string>("none");
   const [isMaterial, setIsMaterial] = useState(true);
+  const [mergeSource, setMergeSource] = useState("none");
+
 
   if (query.isPending || !query.data) {
     return (
